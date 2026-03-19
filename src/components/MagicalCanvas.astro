@@ -23,32 +23,35 @@
   }
 
   #p5-container {
-    width: 100%;
-    max-width: 100%;
-    max-height: 100%;
     aspect-ratio: 1 / 1;
+    height: 100vh;
+    max-height: calc(100vh - 220px);
+    max-width: calc(100vw - 360px);
+    width: auto;
+    box-sizing: border-box; /* Prevent border bleed styling bug natively */
     position: relative;
     border-radius: 20px;
     box-shadow: 0 0 40px rgba(180, 150, 255, 0.15), 0 0 100px rgba(0,0,0,0.8);
     border: 1px solid rgba(180, 150, 255, 0.2);
     overflow: hidden;
     background: #0d0617; /* Avoid flashes of white */
-    margin: 0 auto;
+    margin: 0; /* Remove auto padding since flex will center it */
     touch-action: none; /* Crucial for tracking on Touch devices */
   }
 
-  @media (min-width: 1001px) {
+  @media (max-width: 1000px) {
     #p5-container {
-      width: min(calc(100vh - 240px), calc(100vw - 360px));
-      height: min(calc(100vh - 240px), calc(100vw - 360px));
+      height: 100vw;
+      max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 300px);
     }
   }
 
-  #p5-container canvas {
+  :global(#p5-container canvas) {
     width: 100% !important;
     height: 100% !important;
-    display: block;
-    object-fit: contain;
+    display: block !important;
+    /* Removed object-fit entirely because container is a strict square, ensuring flawless p5 mouse bounding rect calculation! */
   }
 </style>
 
@@ -181,6 +184,11 @@
         // Perfect 1:1 Aspect Ratio targeted for Instagram Export
         const canvas = p.createCanvas(1200, 1200); 
         canvas.parent("p5-container");
+        
+        // Force the physical DOM element to dynamically inherit container bounds via inline style
+        canvas.elt.style.width = "100%";
+        canvas.elt.style.height = "100%";
+        
         p.background(13, 6, 23); // Deep space purple
 
         // Freeze Camera Translation Offsets
@@ -214,12 +222,28 @@
         });
 
         exportBtn?.addEventListener("click", () => {
-          // Creates a composite layer with the dark purple theme background
-          let pg = p.createGraphics(p.width, p.height);
-          pg.background(13, 6, 23); // #0d0617 matches UI wrapper background
-          pg.image(canvas, 0, 0);
-          p.save(pg, "MagicalArtwork.png");
-          pg.remove();
+          const domCanvas = document.querySelector("#p5-container canvas") as HTMLCanvasElement;
+          if (!domCanvas) return;
+          
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = domCanvas.width;
+          tempCanvas.height = domCanvas.height;
+          
+          const ctx = tempCanvas.getContext("2d");
+          if (!ctx) return;
+          
+          // Fill background to match theme
+          ctx.fillStyle = "#0d0617";
+          ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+          
+          // Draw the physical pixels of the p5 canvas perfectly over it
+          ctx.drawImage(domCanvas, 0, 0);
+          
+          // Trigger download directly
+          const link = document.createElement("a");
+          link.download = "MagicalArtwork.png";
+          link.href = tempCanvas.toDataURL("image/png");
+          link.click();
         });
 
         // Setup hidden file input for importing images
