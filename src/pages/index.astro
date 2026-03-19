@@ -19,7 +19,7 @@ import "../styles/style.css";
       }
       .app-layout {
         display: grid;
-        grid-template-areas: 
+        grid-template-areas:
           ". top ."
           "left center right"
           ". bottom .";
@@ -41,11 +41,33 @@ import "../styles/style.css";
         align-items: center;
         gap: 15px;
       }
-      .dock-top { grid-area: top; justify-content: center; justify-self: stretch; align-self: end; }
-      .dock-bottom { grid-area: bottom; justify-content: center; justify-self: stretch; align-self: start; }
-      .dock-left { grid-area: left; flex-direction: column; justify-content: center; justify-self: end; align-self: stretch; }
-      .dock-right { grid-area: right; flex-direction: column; justify-content: center; justify-self: start; align-self: stretch; }
-      
+      .dock-top {
+        grid-area: top;
+        justify-content: center;
+        justify-self: stretch;
+        align-self: end;
+      }
+      .dock-bottom {
+        grid-area: bottom;
+        justify-content: center;
+        justify-self: stretch;
+        align-self: start;
+      }
+      .dock-left {
+        grid-area: left;
+        flex-direction: column;
+        justify-content: center;
+        justify-self: end;
+        align-self: stretch;
+      }
+      .dock-right {
+        grid-area: right;
+        flex-direction: column;
+        justify-content: center;
+        justify-self: start;
+        align-self: stretch;
+      }
+
       .workspace {
         grid-area: center;
         display: flex;
@@ -55,11 +77,11 @@ import "../styles/style.css";
         min-width: 0;
         min-height: 0;
       }
-      
+
       /* Mobile First Responsive Transition! */
       @media (max-width: 1000px) {
         .app-layout {
-          grid-template-areas: 
+          grid-template-areas:
             "top"
             "left"
             "center"
@@ -75,21 +97,29 @@ import "../styles/style.css";
           justify-content: stretch;
           align-content: start;
         }
-        .dock-left, .dock-right, .dock-top, .dock-bottom {
+        .dock-left,
+        .dock-right,
+        .dock-top,
+        .dock-bottom {
           align-self: center; /* Remove strict constraints on mobile */
           justify-self: stretch; /* Match canvas width */
         }
-        .dock-left, .dock-right {
+        .dock-left,
+        .dock-right {
           flex-direction: row;
           flex-wrap: wrap;
         }
         .dock {
           flex-wrap: wrap;
         }
-        .divider-h { display: none; }
-        .control-group.vert { flex-direction: row; }
+        .divider-h {
+          display: none;
+        }
+        .control-group.vert {
+          flex-direction: row;
+        }
       }
-      
+
       /* Control Styling */
       .control-group {
         display: flex;
@@ -120,7 +150,9 @@ import "../styles/style.css";
         overflow: hidden;
         outline: none;
       }
-      input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+      input[type="color"]::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
       input[type="color"]::-webkit-color-swatch {
         border: none;
         border-radius: 50%;
@@ -134,7 +166,7 @@ import "../styles/style.css";
         cursor: pointer;
         width: 100px;
       }
-      
+
       /* Buttons */
       button {
         background: rgba(180, 150, 255, 0.15);
@@ -158,13 +190,16 @@ import "../styles/style.css";
       button.active {
         background: rgba(180, 150, 255, 0.5);
         border-color: #d4bbff;
-        box-shadow: 0 0 15px rgba(180, 150, 255, 0.6), inset 0 0 10px rgba(0, 0, 0, 0.3);
+        box-shadow:
+          0 0 15px rgba(180, 150, 255, 0.6),
+          inset 0 0 10px rgba(0, 0, 0, 0.3);
         text-shadow: 0 0 5px rgba(255, 255, 255, 0.8);
       }
-      .dock-left button, .dock-right button {
+      .dock-left button,
+      .dock-right button {
         width: 100%; /* Uniform width inside vertical docks */
       }
-      
+
       .divider {
         width: 2px;
         height: 24px;
@@ -195,7 +230,13 @@ import "../styles/style.css";
         <div class="divider"></div>
         <div class="control-group">
           <label for="opacity-picker">Opacity</label>
-          <input type="range" id="opacity-picker" min="5" max="100" value="100" />
+          <input
+            type="range"
+            id="opacity-picker"
+            min="5"
+            max="100"
+            value="100"
+          />
         </div>
       </div>
 
@@ -242,19 +283,19 @@ import "../styles/style.css";
 
     <script>
       // Independent toggles
-      document.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          btn.classList.toggle('active');
+      document.querySelectorAll(".toggle-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          btn.classList.toggle("active");
         });
       });
 
       // Exclusive tool buttons
-      const toolBtns = document.querySelectorAll('.tool-btn');
-      toolBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          if (!btn.classList.contains('active')) {
-            toolBtns.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
+      const toolBtns = document.querySelectorAll(".tool-btn");
+      toolBtns.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (!btn.classList.contains("active")) {
+            toolBtns.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
           }
         });
       });
