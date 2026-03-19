@@ -119,6 +119,16 @@
       let isMouseOverCanvas = false;
       let currentPressure = 1.0;
 
+      let undoStack: any[] = [];
+      let redoStack: any[] = [];
+      let isDrawing = false;
+
+      const saveState = () => {
+        undoStack.push(p.get());
+        if (undoStack.length > 25) undoStack.shift(); // Limit memory 
+        redoStack = []; // Any new action strictly destroys forward redo history
+      };
+
       window.addEventListener('pointermove', (e) => {
          if (e.pointerType === 'pen') {
             currentPressure = e.pressure > 0.05 ? e.pressure : 1.0;
@@ -173,11 +183,9 @@
         canvas.parent("p5-container");
         p.background(13, 6, 23); // Deep space purple
 
-        // Center the camera instantly at spawn
-        const container = document.getElementById("p5-container");
-        const cw = container?.clientWidth || p.windowWidth;
-        camX = -(1200 - cw) / 2; // Adjusted for 1200 width
-        camY = -(1200 - 600) / 2; // Adjusted for 1200 height
+        // Freeze Camera Translation Offsets
+        camX = 0;
+        camY = 0;
         updateCamera();
 
         // Transparent background so exact CSS background always shows flawlessly
@@ -188,6 +196,7 @@
         p.strokeJoin(p.ROUND);
 
         clearBtn?.addEventListener("click", () => {
+          saveState();
           p.clear(0, 0, 0, 0);
           particles = [];
           sparkles = [];
@@ -227,6 +236,7 @@
           reader.onload = (event) => {
             const dataUrl = event.target?.result as string;
             p.loadImage(dataUrl, (img) => {
+              saveState();
               // Scale imported image to perfectly fit the aspect ratio 
               let ratio = Math.min(p.width / img.width, p.height / img.height);
               let newW = img.width * ratio;
@@ -244,6 +254,30 @@
         importBtn?.addEventListener("click", () => {
           importInput.click();
         });
+
+        const undoBtn = document.getElementById("undo-btn");
+        if (undoBtn) {
+          undoBtn.addEventListener("click", () => {
+            if (undoStack.length > 0) {
+              redoStack.push(p.get());
+              const prevState = undoStack.pop();
+              p.clear(0, 0, 0, 0); // Restore full transparency layout because background rests in native CSS!
+              p.image(prevState, 0, 0);
+            }
+          });
+        }
+
+        const redoBtn = document.getElementById("redo-btn");
+        if (redoBtn) {
+          redoBtn.addEventListener("click", () => {
+            if (redoStack.length > 0) {
+              undoStack.push(p.get());
+              const nextState = redoStack.pop();
+              p.clear(0, 0, 0, 0);
+              p.image(nextState, 0, 0);
+            }
+          });
+        }
       };
 
       p.draw = () => {
@@ -280,7 +314,7 @@
           }
         }
 
-        if (p.keyIsDown(32)) {
+        if (false) {
           // Spacebar Panning Mode
           if (uiContainer)
             uiContainer.style.cursor = p.mouseIsPressed ? "grabbing" : "grab";
@@ -338,15 +372,13 @@
         }
         
         // --- Improved Smooth Brush Engine ---
-        if (
-          p.mouseIsPressed &&
-          !dragStartOnUI &&
-          !p.keyIsDown(32) &&
-          p.mouseX >= 0 &&
-          p.mouseX <= p.width &&
-          p.mouseY >= 0 &&
-          p.mouseY <= p.height
-        ) {
+        // Main Drawing logic hook
+        if (p.mouseIsPressed && isMouseOverCanvas && !dragStartOnUI && !p.keyIsDown(32)) {
+          if (!isDrawing) {
+            isDrawing = true;
+            saveState(); // Anchor exactly one frame explicitly at the opening of the physical stroke!
+          }
+
           if (eraserToggle?.classList.contains("active")) {
             // Eraser Tool
             (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0;
@@ -504,6 +536,7 @@
           lastDrawY = p.mouseY;
         } else {
           // Reset stroke tracking when mouse is lifted
+          isDrawing = false;
           lastDrawX = -1;
         }
 
@@ -578,36 +611,4 @@
   }
 </script>
 
-<style>
-  .canvas-wrapper {
-    width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
-    position: relative;
-    border-radius: 24px;
-    border: 2px solid rgba(180, 150, 255, 0.3);
-    box-shadow:
-      0 0 40px rgba(180, 150, 255, 0.15),
-      inset 0 0 20px rgba(180, 150, 255, 0.1);
-    background: #0d0617; /* Darker purple matching global theme */
-    overflow: hidden;
-  }
 
-  #p5-container {
-    cursor: crosshair;
-    width: 100%;
-    height: 600px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  #p5-container canvas {
-    display: block;
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 1600px !important;
-    height: 1200px !important;
-    max-width: none !important;
-  }
-</style>
