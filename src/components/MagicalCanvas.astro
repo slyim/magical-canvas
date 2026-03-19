@@ -1,0 +1,613 @@
+---
+/* Component Script (Runs at build time) */
+---
+
+<div id="p5-container">
+  <div id="cursor-ring">
+    <svg width="100%" height="100%" viewBox="0 0 100 100" style="overflow:visible;">
+      <circle id="cursor-circle" cx="50" cy="50" r="50" fill="none" stroke="rgba(180, 150, 255, 0.8)" stroke-width="1.5" vector-effect="non-scaling-stroke" style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));" />
+      <rect id="cursor-square" x="0" y="0" width="100" height="100" fill="none" stroke="rgba(180, 150, 255, 0.8)" stroke-width="1.5" vector-effect="non-scaling-stroke" style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));" />
+      <polygon id="cursor-triangle" points="50,0 6.7,75 93.3,75" fill="none" stroke="rgba(180, 150, 255, 0.8)" stroke-width="1.5" vector-effect="non-scaling-stroke" style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));" />
+    </svg>
+  </div>
+</div>
+
+<style>
+  #cursor-ring {
+    position: fixed;
+    pointer-events: none; /* Let clicks pass through! */
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    /* transition: width 0.05s ease, height 0.05s ease; */ /* Smooth resizing */
+    display: none; /* Hide when mouse is outside window */
+  }
+
+  #p5-container {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 1 / 1;
+    position: relative;
+    border-radius: 20px;
+    box-shadow: 0 0 40px rgba(180, 150, 255, 0.15), 0 0 100px rgba(0,0,0,0.8);
+    border: 1px solid rgba(180, 150, 255, 0.2);
+    overflow: hidden;
+    background: #0d0617; /* Avoid flashes of white */
+    margin: 0 auto;
+    touch-action: none; /* Crucial for tracking on Touch devices */
+  }
+
+  @media (min-width: 1001px) {
+    #p5-container {
+      width: min(calc(100vh - 240px), calc(100vw - 360px));
+      height: min(calc(100vh - 240px), calc(100vw - 360px));
+    }
+  }
+
+  #p5-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+    object-fit: contain;
+  }
+</style>
+
+<script>
+  import p5 from "p5";
+
+  const initP5 = () => {
+    const colorPicker = document.getElementById(
+      "color-picker",
+    ) as HTMLInputElement;
+    const sizePicker = document.getElementById(
+      "size-picker",
+    ) as HTMLInputElement;
+    const opacityPicker = document.getElementById(
+      "opacity-picker",
+    ) as HTMLInputElement;
+    const fadeToggle = document.getElementById(
+      "fade-toggle",
+    ) as HTMLButtonElement;
+    const rainbowToggle = document.getElementById(
+      "rainbow-toggle",
+    ) as HTMLButtonElement;
+    const animToggle = document.getElementById(
+      "anim-toggle",
+    ) as HTMLButtonElement;
+    const eraserToggle = document.getElementById(
+      "eraser-toggle",
+    ) as HTMLButtonElement;
+    const fadeSpeed = document.getElementById("fade-speed") as HTMLInputElement;
+    
+    // Tools
+    const brushToggle = document.getElementById("brush-toggle") as HTMLButtonElement;
+    const squareToggle = document.getElementById("square-toggle") as HTMLButtonElement;
+    const ellipseToggle = document.getElementById("ellipse-toggle") as HTMLButtonElement;
+    const triangleToggle = document.getElementById("triangle-toggle") as HTMLButtonElement;
+    const clearBtn = document.getElementById("clear-btn") as HTMLButtonElement;
+    const exportBtn = document.getElementById(
+      "export-btn",
+    ) as HTMLButtonElement;
+    const importBtn = document.getElementById(
+      "import-btn",
+    ) as HTMLButtonElement;
+
+    const sketch = (p: p5) => {
+      let currentThickness = 25;
+      let particles: any[] = [];
+      let sparkles: any[] = []; // For the new brush sparkles
+
+      // Viewport Camera State
+      let camX = 0;
+      let camY = 0;
+      const updateCamera = () => {
+        const el = document.querySelector(
+          "#p5-container canvas",
+        ) as HTMLElement;
+        if (el) {
+          el.style.transformOrigin = "0 0";
+          el.style.transform = `translate(${camX}px, ${camY}px)`;
+        }
+      };
+
+      // Store the last mouse position separately to prevent line jumping bugs
+      let lastDrawX = -1;
+      let lastDrawY = -1;
+      
+      // Global Drag lock for UI overlay clicks
+      let dragStartOnUI = false;
+      let isMouseOverCanvas = false;
+      let currentPressure = 1.0;
+
+      window.addEventListener('pointermove', (e) => {
+         if (e.pointerType === 'pen') {
+            currentPressure = e.pressure > 0.05 ? e.pressure : 1.0;
+         } else {
+            currentPressure = 1.0;
+         }
+      });
+      
+      window.addEventListener('pointerdown', (e) => {
+         if (e.pointerType === 'pen') {
+            currentPressure = e.pressure > 0.05 ? e.pressure : 1.0;
+         } else {
+            currentPressure = 1.0;
+         }
+      });
+
+      window.addEventListener('mousedown', (e) => {
+        const target = e.target as Element;
+        dragStartOnUI = !!(target && target.closest('.dock'));
+      });
+
+      // Strict visibility tracking for the SVG cursor
+      window.addEventListener('DOMContentLoaded', () => {
+         const container = document.getElementById("p5-container");
+         if (container) {
+            container.addEventListener('mouseenter', () => isMouseOverCanvas = true);
+            container.addEventListener('mouseleave', () => isMouseOverCanvas = false);
+         }
+      });
+
+      // Helper function for creating particles
+      const createParticle = (x: number, y: number, vx: number, vy: number) => {
+        const h = (p.frameCount % 360) / 360;
+        p.colorMode(p.HSB, 1);
+        const c = p.color(h, 0.8, 0.7);
+        p.colorMode(p.RGB, 255);
+        return {
+          x: x,
+          y: y,
+          vx: vx,
+          vy: vy,
+          life: p.random(100, 200),
+          size: p.random(2, 8),
+          color: c,
+        };
+      };
+
+      p.setup = () => {
+        p.pixelDensity(1); // Standardize for speed given the huge resolution
+        // Perfect 1:1 Aspect Ratio targeted for Instagram Export
+        const canvas = p.createCanvas(1200, 1200); 
+        canvas.parent("p5-container");
+        p.background(13, 6, 23); // Deep space purple
+
+        // Center the camera instantly at spawn
+        const container = document.getElementById("p5-container");
+        const cw = container?.clientWidth || p.windowWidth;
+        camX = -(1200 - cw) / 2; // Adjusted for 1200 width
+        camY = -(1200 - 600) / 2; // Adjusted for 1200 height
+        updateCamera();
+
+        // Transparent background so exact CSS background always shows flawlessly
+        p.clear(0, 0, 0, 0);
+
+        // Better line caps for smooth connecting strokes
+        p.strokeCap(p.ROUND);
+        p.strokeJoin(p.ROUND);
+
+        clearBtn?.addEventListener("click", () => {
+          p.clear(0, 0, 0, 0);
+          particles = [];
+          sparkles = [];
+          const canvasEl = document.querySelector(
+            "#p5-container canvas",
+          ) as HTMLElement;
+          if (canvasEl) {
+            canvasEl.style.transition = "none";
+            canvasEl.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+            setTimeout(() => {
+              canvasEl.style.transition = "background-color 0.4s ease-out";
+              canvasEl.style.backgroundColor = "transparent";
+            }, 10);
+          }
+        });
+
+        exportBtn?.addEventListener("click", () => {
+          // Creates a composite layer with the dark purple theme background
+          let pg = p.createGraphics(p.width, p.height);
+          pg.background(13, 6, 23); // #0d0617 matches UI wrapper background
+          pg.image(canvas, 0, 0);
+          p.save(pg, "MagicalArtwork.png");
+          pg.remove();
+        });
+
+        // Setup hidden file input for importing images
+        const importInput = document.createElement("input");
+        importInput.type = "file";
+        importInput.accept = "image/png, image/jpeg, image/webp";
+        importInput.style.display = "none";
+        document.body.appendChild(importInput);
+
+        importInput.addEventListener("change", (e: Event) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target?.result as string;
+            p.loadImage(dataUrl, (img) => {
+              // Scale imported image to perfectly fit the aspect ratio 
+              let ratio = Math.min(p.width / img.width, p.height / img.height);
+              let newW = img.width * ratio;
+              let newH = img.height * ratio;
+              
+              // Draw image over existing artifacts
+              p.image(img, p.width / 2 - newW / 2, p.height / 2 - newH / 2, newW, newH);
+            });
+          };
+          reader.readAsDataURL(file);
+          // Auto clear element value to allow re-importing the same frame!
+          importInput.value = "";
+        });
+
+        importBtn?.addEventListener("click", () => {
+          importInput.click();
+        });
+      };
+
+      p.draw = () => {
+        // --- Apply Optional Fade Effect ---
+        if (fadeToggle?.classList.contains("active")) {
+          const speedVal = parseInt(fadeSpeed?.value || "5");
+          const ctx = p.drawingContext as CanvasRenderingContext2D;
+          ctx.save();
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.shadowBlur = 0;
+          
+          // Drastically reduced fade alpha bounds for super slow trailing
+          let fadeAlpha = p.map(speedVal, 1, 60, 0.0001, 0.005); // Reduced max fade for dramatic effect
+          ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+          ctx.fillRect(0, 0, p.width, p.height);
+          ctx.restore();
+        }
+
+
+
+        // --- Space To Pan Canvas ---
+        const uiContainer = document.getElementById("p5-container");
+        const cursorRing = document.getElementById("cursor-ring");
+        const canvasEl = document.querySelector("#p5-container canvas") as HTMLElement;
+        
+        // Hide/Show correct UI elements
+        if (cursorRing && canvasEl) {
+          if (isMouseOverCanvas && !p.keyIsDown(32)) {
+            cursorRing.style.display = "block";
+            canvasEl.style.cursor = "none";
+          } else {
+             cursorRing.style.display = "none";
+             canvasEl.style.cursor = p.keyIsDown(32) ? (p.mouseIsPressed ? "grabbing" : "grab") : "default";
+          }
+        }
+
+        if (p.keyIsDown(32)) {
+          // Spacebar Panning Mode
+          if (uiContainer)
+            uiContainer.style.cursor = p.mouseIsPressed ? "grabbing" : "grab";
+          if (p.mouseIsPressed) {
+            // Apply Physical view panning via CSS transform!
+            // This never drops quality and is totally infinite matching the canvas bounds
+            camX += p.winMouseX - p.pwinMouseX;
+            camY += p.winMouseY - p.pwinMouseY;
+            updateCamera();
+          }
+          lastDrawX = -1; // Prevent brushing while panning
+          return;
+        } else {
+          // In Drawing Mode
+          if (uiContainer) uiContainer.style.cursor = "none";
+          
+          if (cursorRing) {
+             let thickness = parseInt(sizePicker?.value || "25");
+             let scaleFac = canvasEl.clientWidth / p.width; 
+             let screenThickness = thickness * scaleFac; // Physically map WebGL 1200px footprint into exact CSS Screen dimensions!
+             let finalRingSize = screenThickness;
+             
+             // Fetch internal SVG elements
+             const cCircle = document.getElementById("cursor-circle");
+             const cSquare = document.getElementById("cursor-square");
+             const cTri = document.getElementById("cursor-triangle");
+
+             if (cCircle) cCircle.style.display = "none";
+             if (cSquare) cSquare.style.display = "none";
+             if (cTri) cTri.style.display = "none";
+             
+             // Match geometry based on active tool!
+             if (eraserToggle?.classList.contains("active")) {
+                if (cCircle) cCircle.style.display = "block";
+                finalRingSize = screenThickness * 1.5;
+             } else if (squareToggle?.classList.contains("active")) {
+                if (cSquare) cSquare.style.display = "block";
+                finalRingSize = screenThickness * 2.0;
+             } else if (ellipseToggle?.classList.contains("active")) {
+                if (cCircle) cCircle.style.display = "block";
+                finalRingSize = screenThickness * 2.0;
+             } else if (triangleToggle?.classList.contains("active")) {
+                if (cTri) cTri.style.display = "block";
+                finalRingSize = screenThickness * 3.0; // The SVG is radius=50, container scales by 3x gives radius 1.5x matching p.triangle!
+             } else {
+                if (cCircle) cCircle.style.display = "block";
+                finalRingSize = screenThickness; // Standard Brush
+             }
+
+             cursorRing.style.width = finalRingSize + "px";
+             cursorRing.style.height = finalRingSize + "px";
+             cursorRing.style.left = p.winMouseX + "px";
+             cursorRing.style.top = p.winMouseY + "px";
+          }
+        }
+        
+        // --- Improved Smooth Brush Engine ---
+        if (
+          p.mouseIsPressed &&
+          !dragStartOnUI &&
+          !p.keyIsDown(32) &&
+          p.mouseX >= 0 &&
+          p.mouseX <= p.width &&
+          p.mouseY >= 0 &&
+          p.mouseY <= p.height
+        ) {
+          if (eraserToggle?.classList.contains("active")) {
+            // Eraser Tool
+            (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0;
+            let currentThickness = parseInt(sizePicker?.value || "25");
+            let opacityVal = parseInt(opacityPicker?.value || "100");
+            let eraseStrength = p.map(opacityVal, 0, 100, 0, 255); // p5.js native scale is 255 for blending
+
+            p.erase(eraseStrength, eraseStrength);
+            p.strokeWeight(currentThickness * 1.5); // Eraser is a bit thicker
+            p.line(p.mouseX, p.mouseY, p.pmouseX, p.pmouseY);
+            p.noErase();
+          } else {
+            // If we just clicked or dragged in, update start points
+            if (lastDrawX === -1) {
+              lastDrawX = p.mouseX;
+              lastDrawY = p.mouseY;
+              currentThickness = parseInt(sizePicker?.value || "25");
+            }
+
+            let baseSize = parseInt(sizePicker?.value || "25");
+
+            // Apply hardware pen pressure strictly without random jitter desync
+            currentThickness = Math.max(baseSize * currentPressure, baseSize * 0.1);
+
+            const baseC = p.color(colorPicker?.value || "#b496ff");
+
+            // Additional randomness: Iridescent Hue Shifting
+            p.colorMode(p.HSB);
+            let h = p.hue(baseC);
+            let s = p.saturation(baseC);
+            let b = p.brightness(baseC);
+
+            if (rainbowToggle?.classList.contains("active")) {
+               // Hyper-active smooth randomized frame cycle!
+               h = (p.frameCount * 5) % 360;
+               s = 100;
+               b = 100;
+            }
+
+            // Shift the hue wildly around the base color, creating pearlescent neon
+            let offsetH = (h + p.random(-25, 25) + 360) % 360;
+            let sSat = p.constrain(s + p.random(-10, 10), 0, 100);
+            const c = p.color(offsetH, sSat, b);
+            p.colorMode(p.RGB); // Restore back to RGB for rendering
+
+            // Add a magical neon glow using native canvas API
+            (p.drawingContext as CanvasRenderingContext2D).shadowBlur =
+              baseSize * p.random(0.6, 1.0); // Randomize glow intensity
+            (p.drawingContext as CanvasRenderingContext2D).shadowColor =
+              c.toString();
+
+            let opacityVal = parseInt(opacityPicker?.value || "100") / 100.0;
+            let alphaBase = p.random(180, 220) * opacityVal;
+
+            // Stroke drawing with randomized alpha
+            p.stroke(p.red(c), p.green(c), p.blue(c), alphaBase);
+            p.strokeWeight(currentThickness);
+
+            // Draw shape depending on selected tool
+            if (squareToggle?.classList.contains("active")) {
+              p.noStroke();
+              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
+              p.rectMode(p.CENTER);
+              p.rect(p.mouseX, p.mouseY, currentThickness * 2.0, currentThickness * 2.0);
+            } else if (ellipseToggle?.classList.contains("active")) {
+              p.noStroke();
+              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
+              p.ellipse(p.mouseX, p.mouseY, currentThickness * 2.0, currentThickness * 2.0);
+            } else if (triangleToggle?.classList.contains("active")) {
+              p.noStroke();
+              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
+              let size = currentThickness * 1.5;
+              p.triangle(
+                p.mouseX, p.mouseY - size,
+                p.mouseX - size * 0.866, p.mouseY + size * 0.5,
+                p.mouseX + size * 0.866, p.mouseY + size * 0.5
+              );
+            } else {
+              // Default Brush Line
+              p.line(lastDrawX, lastDrawY, p.mouseX, p.mouseY);
+            }
+
+            // Constant subtle ambient sparkles (circles and crosses)
+            if (p.random(1) > 0.4) {
+              let sparkBase = baseSize * 0.5;
+              let spread = baseSize * p.random(1, 3); // Random spread radius
+              let px = p.mouseX + p.random(-spread, spread);
+              let py = p.mouseY + p.random(-spread, spread);
+
+              (p.drawingContext as CanvasRenderingContext2D).shadowBlur =
+                Math.max(3, sparkBase);
+              (p.drawingContext as CanvasRenderingContext2D).shadowColor =
+                c.toString();
+
+              // Randomly pick a sparkle star or a circle
+              if (p.random(1) > 0.7) {
+                p.stroke(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
+                p.strokeWeight(p.random(1, 2));
+                p.noFill();
+                let crossS = p.random(2, sparkBase * 0.5);
+                p.line(px - crossS, py, px + crossS, py);
+                p.line(px, py - crossS, px, py + crossS);
+              } else {
+                p.noStroke();
+                p.fill(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
+                p.circle(px, py, p.random(1, Math.max(2, sparkBase * 0.5)));
+              }
+            }
+
+            // Energetic flying lines / sparks with directional burst
+            if (p.random(1) > 0.9) {
+              let px = p.mouseX + p.random(-baseSize * 1.5, baseSize * 1.5);
+              let py = p.mouseY + p.random(-baseSize * 1.5, baseSize * 1.5);
+              let pSize = currentThickness * p.random(0.5, 1.5); // Randomize spark line size
+
+              if (animToggle?.classList.contains("active")) {
+                // Create directional drift towards the stroke
+                let dirX = p.mouseX - lastDrawX;
+                let dirY = p.mouseY - lastDrawY;
+
+                particles.push({
+                  x: px,
+                  y: py,
+                  vx: dirX * p.random(0.1, 0.4) + p.random(-4, 4), // Burst with mouse velocity
+                  vy: dirY * p.random(0.1, 0.4) + p.random(-4, 4),
+                  life: p.random(150, 255),
+                  size: pSize,
+                  angle: p.random(p.TWO_PI),
+                  rotSpeed: p.random(-0.15, 0.15),
+                  r: p.red(c),
+                  g: p.green(c),
+                  b: p.blue(c),
+                  colorStr: c.toString(),
+                  lenMult: p.random(0.2, 0.7), // Randomize line length individually
+                });
+              } else {
+                // Draw static random length line
+                (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0; // optimized
+                p.stroke(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
+                p.strokeWeight(Math.max(1, pSize * 0.05));
+                p.noFill();
+                let l = pSize * p.random(0.2, 0.7);
+                let a = p.random(p.TWO_PI);
+
+                // Trig instead of translate/rotate saves massive CPU calls
+                p.beginShape();
+                p.vertex(px - Math.cos(a) * l, py - Math.sin(a) * l);
+                p.vertex(px + Math.cos(a) * l, py + Math.sin(a) * l);
+                p.endShape();
+              }
+            }
+          }
+
+          lastDrawX = p.mouseX;
+          lastDrawY = p.mouseY;
+        } else {
+          // Reset stroke tracking when mouse is lifted
+          lastDrawX = -1;
+        }
+
+        // --- Animate Active Particles ---
+        if (particles.length > 0) {
+          for (let i = particles.length - 1; i >= 0; i--) {
+            let pt = particles[i];
+
+            // Move particle
+            pt.x += pt.vx;
+            pt.y += pt.vy;
+            // Add some organic drift
+            pt.vx += p.random(-1, 1);
+            pt.vy += p.random(-1, 1);
+
+            if (pt.angle !== undefined) {
+              pt.angle += pt.rotSpeed || 0;
+            }
+
+            // Apply air friction
+            pt.vx *= 0.99;
+            pt.vy *= 0.99;
+            pt.life -= 2;
+
+            if (pt.life <= 0) {
+              particles.splice(i, 1);
+            } else {
+              // Heavy optimization: Disable individual particle shadowBlurs inside loop
+              (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0;
+
+              let pr = pt.r !== undefined ? pt.r : 255;
+              let pg = pt.g !== undefined ? pt.g : 255;
+              let pb = pt.b !== undefined ? pt.b : 255;
+              p.stroke(pr, pg, pb, Math.min(255, pt.life));
+              p.strokeWeight(Math.max(1, pt.size * 0.03));
+              p.noFill();
+              p.strokeCap(p.ROUND);
+              p.strokeJoin(p.ROUND);
+
+              let l = pt.size * (pt.lenMult || 0.4);
+              let a = pt.angle !== undefined ? pt.angle : 0;
+
+              // Trig instead of canvas matrices for high FPS
+              p.beginShape();
+              p.vertex(pt.x - Math.cos(a) * l, pt.y - Math.sin(a) * l);
+              p.vertex(pt.x + Math.cos(a) * l, pt.y + Math.sin(a) * l);
+              p.endShape();
+            }
+          }
+        }
+      };
+
+      p.windowResized = () => {
+        // Viewport effortlessly crops canvas natively. Render size doesn't need to rebuild!
+      };
+    };
+
+    // Lock page spacebar from destroying UX natively
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.code === "Space") e.preventDefault();
+      },
+      { passive: false },
+    );
+
+    new p5(sketch);
+  };
+
+  if (typeof window !== "undefined") {
+    initP5();
+  }
+</script>
+
+<style>
+  .canvas-wrapper {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    border-radius: 24px;
+    border: 2px solid rgba(180, 150, 255, 0.3);
+    box-shadow:
+      0 0 40px rgba(180, 150, 255, 0.15),
+      inset 0 0 20px rgba(180, 150, 255, 0.1);
+    background: #0d0617; /* Darker purple matching global theme */
+    overflow: hidden;
+  }
+
+  #p5-container {
+    cursor: crosshair;
+    width: 100%;
+    height: 600px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #p5-container canvas {
+    display: block;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 1600px !important;
+    height: 1200px !important;
+    max-width: none !important;
+  }
+</style>
