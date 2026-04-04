@@ -1,4 +1,4 @@
-import { CANVAS_SIZE, PIXEL_DENSITY } from './constants.js';
+import { CANVAS_SIZE, PIXEL_DENSITY } from "./constants.js";
 
 /**
  * Initializes the p5 canvas inside #p5-container.
@@ -9,14 +9,14 @@ import { CANVAS_SIZE, PIXEL_DENSITY } from './constants.js';
 export function setupCanvas(p) {
   p.pixelDensity(PIXEL_DENSITY); // Standardize for consistent performance
   const canvas = p.createCanvas(CANVAS_SIZE, CANVAS_SIZE);
-  canvas.parent('p5-container');
+  canvas.parent("p5-container");
 
   // CSS fills the container; the 1200px render resolution stays fixed
-  canvas.elt.style.width  = '100%';
-  canvas.elt.style.height = '100%';
+  canvas.elt.style.width = "100%";
+  canvas.elt.style.height = "100%";
 
   // Start fully transparent so the CSS background (#0d0617) shows through
-  p.clear(0, 0, 0, 0);
+  p.clear();
 
   // Round line caps for smooth, connected brush strokes
   p.strokeCap(p.ROUND);

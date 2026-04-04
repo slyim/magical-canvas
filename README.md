@@ -24,12 +24,12 @@ A browser-based drawing app built with [Astro](https://astro.build) and [p5.js](
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | [Astro](https://astro.build) 6 (static site) |
-| Canvas engine | [p5.js](https://p5js.org) 2 (instance mode) |
-| Styling | Vanilla CSS (responsive grid) |
-| Deployment | GitHub Pages via Astro static build |
+| Layer         | Technology                                   |
+| ------------- | -------------------------------------------- |
+| Framework     | [Astro](https://astro.build) 6 (static site) |
+| Canvas engine | [p5.js](https://p5js.org) 2 (instance mode)  |
+| Styling       | Vanilla CSS (responsive grid)                |
+| Deployment    | GitHub Pages via Astro static build          |
 
 ---
 
@@ -67,34 +67,39 @@ Pushes to `main` trigger the GitHub Actions workflow in [.github/workflows/deplo
 ## Controls
 
 ### Tools (left dock)
-| Tool | Description |
-|------|-------------|
-| Brush | Default smooth line tool |
-| Eraser | Erase with variable opacity |
-| Square | Stamp filled squares |
-| Ellipse | Stamp filled ellipses |
-| Triangle | Stamp filled triangles |
+
+| Tool     | Description                 |
+| -------- | --------------------------- |
+| Brush    | Default smooth line tool    |
+| Eraser   | Erase with variable opacity |
+| Square   | Stamp filled squares        |
+| Ellipse  | Stamp filled ellipses       |
+| Triangle | Stamp filled triangles      |
 
 ### Effects (right dock)
-| Effect | Description |
-|--------|-------------|
-| Rainbow | Cycles through all hues rapidly |
-| Animate | Emits animated particle sparks from the brush |
-| Fade | Slowly fades the canvas each frame for trail effects |
-| Speed | Controls how fast the Fade effect erases |
+
+| Effect  | Description                                          |
+| ------- | ---------------------------------------------------- |
+| Rainbow | Cycles through all hues rapidly                      |
+| Animate | Emits animated particle sparks from the brush        |
+| Fade    | Slowly fades the canvas each frame for trail effects |
+| Speed   | Controls how fast the Fade effect erases             |
 
 ### Top dock
+
 - **Color** — base brush color (hue-shifted ±25° per stroke for iridescence)
 - **Size** — brush diameter (5–100 px in canvas-space)
 - **Opacity** — stroke alpha
 
 ### Bottom dock
+
 - **Undo / Redo** — up to 25 history states
 - **Clear** — clear the canvas with a flash animation
 - **Import PNG** — load an image as a base layer
 - **Export PNG** — save 1200×1200 PNG with background
 
 ### Keyboard
+
 - **Space** — reserved (default browser scroll is suppressed)
 
 ---

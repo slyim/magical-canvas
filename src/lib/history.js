@@ -1,4 +1,4 @@
-import { UNDO_STACK_MAX } from './constants.js';
+import { UNDO_STACK_MAX } from "./constants.js";
 
 /**
  * Creates an undo/redo history manager for the p5 canvas.
@@ -18,18 +18,46 @@ export function createHistory(p) {
 
     undo() {
       if (undoStack.length === 0) return false;
-      redoStack.push(p.get());
+      // Push a deep-cloned snapshot of the current canvas into redoStack
+      const current = p.get();
+      const currentClone = p.createImage(current.width, current.height);
+      currentClone.copy(
+        current,
+        0,
+        0,
+        current.width,
+        current.height,
+        0,
+        0,
+        current.width,
+        current.height,
+      );
+      redoStack.push(currentClone);
       const prev = undoStack.pop();
-      p.clear(0, 0, 0, 0);
+      p.clear();
       p.image(prev, 0, 0);
       return true;
     },
 
     redo() {
       if (redoStack.length === 0) return false;
-      undoStack.push(p.get());
+      // Push a deep-cloned snapshot of the current canvas into undoStack
+      const current = p.get();
+      const currentClone = p.createImage(current.width, current.height);
+      currentClone.copy(
+        current,
+        0,
+        0,
+        current.width,
+        current.height,
+        0,
+        0,
+        current.width,
+        current.height,
+      );
+      undoStack.push(currentClone);
       const next = redoStack.pop();
-      p.clear(0, 0, 0, 0);
+      p.clear();
       p.image(next, 0, 0);
       return true;
     },

@@ -1,4 +1,4 @@
-import { DEFAULT_COLOR, DEFAULT_SIZE, DEFAULT_OPACITY } from './constants.js';
+import { DEFAULT_COLOR, DEFAULT_SIZE, DEFAULT_OPACITY } from "./constants.js";
 
 /**
  * Reads all UI control values from the DOM once per call.
@@ -6,18 +6,43 @@ import { DEFAULT_COLOR, DEFAULT_SIZE, DEFAULT_OPACITY } from './constants.js';
  */
 export function getUIState() {
   return {
-    color:     document.getElementById('color-picker')?.value   ?? DEFAULT_COLOR,
-    size:      parseInt(document.getElementById('size-picker')?.value    ?? String(DEFAULT_SIZE)),
-    opacity:   parseInt(document.getElementById('opacity-picker')?.value ?? String(DEFAULT_OPACITY)),
-    fadeSpeed: parseInt(document.getElementById('fade-speed')?.value     ?? '5'),
+    color: document.getElementById("color-picker")?.value ?? DEFAULT_COLOR,
+    size: parseInt(
+      document.getElementById("size-picker")?.value || String(DEFAULT_SIZE),
+      10,
+    ),
+    opacity: parseInt(
+      document.getElementById("opacity-picker")?.value ||
+        String(DEFAULT_OPACITY),
+      10,
+    ),
+    fadeSpeed: parseInt(
+      document.getElementById("fade-speed")?.value || "5",
+      10,
+    ),
 
-    isFadeActive:     document.getElementById('fade-toggle')?.classList.contains('active')     ?? false,
-    isRainbowActive:  document.getElementById('rainbow-toggle')?.classList.contains('active')  ?? false,
-    isAnimActive:     document.getElementById('anim-toggle')?.classList.contains('active')     ?? true,
-    isEraserActive:   document.getElementById('eraser-toggle')?.classList.contains('active')   ?? false,
-    isSquareActive:   document.getElementById('square-toggle')?.classList.contains('active')   ?? false,
-    isEllipseActive:  document.getElementById('ellipse-toggle')?.classList.contains('active')  ?? false,
-    isTriangleActive: document.getElementById('triangle-toggle')?.classList.contains('active') ?? false,
+    isFadeActive:
+      document.getElementById("fade-toggle")?.classList.contains("active") ??
+      false,
+    isRainbowActive:
+      document.getElementById("rainbow-toggle")?.classList.contains("active") ??
+      false,
+    isAnimActive:
+      document.getElementById("anim-toggle")?.classList.contains("active") ??
+      true,
+    isEraserActive:
+      document.getElementById("eraser-toggle")?.classList.contains("active") ??
+      false,
+    isSquareActive:
+      document.getElementById("square-toggle")?.classList.contains("active") ??
+      false,
+    isEllipseActive:
+      document.getElementById("ellipse-toggle")?.classList.contains("active") ??
+      false,
+    isTriangleActive:
+      document
+        .getElementById("triangle-toggle")
+        ?.classList.contains("active") ?? false,
   };
 }
 
@@ -26,9 +51,9 @@ export function getUIState() {
  * Defaults to 'brush' when no shape tool is active.
  */
 export function getActiveTool(ui) {
-  if (ui.isEraserActive)   return 'eraser';
-  if (ui.isSquareActive)   return 'square';
-  if (ui.isEllipseActive)  return 'ellipse';
-  if (ui.isTriangleActive) return 'triangle';
-  return 'brush';
+  if (ui.isEraserActive) return "eraser";
+  if (ui.isSquareActive) return "square";
+  if (ui.isEllipseActive) return "ellipse";
+  if (ui.isTriangleActive) return "triangle";
+  return "brush";
 }
