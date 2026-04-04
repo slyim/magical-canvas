@@ -18,25 +18,24 @@
     pointer-events: none; /* Let clicks pass through! */
     transform: translate(-50%, -50%);
     z-index: 9999;
-    /* transition: width 0.05s ease, height 0.05s ease; */ /* Smooth resizing */
-    display: none; /* Hide when mouse is outside window */
+    display: none; /* Hidden when mouse is outside canvas */
   }
 
   #p5-container {
     aspect-ratio: 1 / 1;
-    height: 100vh;
-    max-height: calc(100vh - 220px);
+    height: 100svh;
+    max-height: calc(100svh - 220px);
     max-width: calc(100vw - 360px);
     width: auto;
-    box-sizing: border-box; /* Prevent border bleed styling bug natively */
+    box-sizing: border-box;
     position: relative;
     border-radius: 20px;
     box-shadow: 0 0 40px rgba(180, 150, 255, 0.15), 0 0 100px rgba(0,0,0,0.8);
     border: 1px solid rgba(180, 150, 255, 0.2);
     overflow: hidden;
-    background: #0d0617; /* Avoid flashes of white */
-    margin: 0; /* Remove auto padding since flex will center it */
-    touch-action: none; /* Crucial for tracking on Touch devices */
+    background: #0d0617; /* Prevent flash of white before canvas loads */
+    margin: 0;
+    touch-action: none; /* Required for reliable pointer/touch tracking */
   }
 
   @media (max-width: 1000px) {
@@ -52,588 +51,210 @@
     width: 100% !important;
     height: 100% !important;
     display: block !important;
-    /* Removed object-fit entirely because container is a strict square, ensuring flawless p5 mouse bounding rect calculation! */
+    /* Strict square container means p5's bounding rect calculation is always correct */
   }
 </style>
 
 <script>
   import p5 from "p5";
+  import { setupCanvas } from "../lib/canvas-engine.js";
+  import { createHistory } from "../lib/history.js";
+  import { getUIState, getActiveTool } from "../lib/ui-bridge.js";
+  import { updateCursorRing } from "../lib/cursor.js";
+  import { applyFadeEffect } from "../lib/effects.js";
+  import { createParticleSystem } from "../lib/particle-system.js";
+  import { createDrawingEngine } from "../lib/drawing-tools.js";
+  import { exportPNG, setupImport } from "../lib/export.js";
 
   const initP5 = () => {
-    const colorPicker = document.getElementById(
-      "color-picker",
-    ) as HTMLInputElement;
-    const sizePicker = document.getElementById(
-      "size-picker",
-    ) as HTMLInputElement;
-    const opacityPicker = document.getElementById(
-      "opacity-picker",
-    ) as HTMLInputElement;
-    const fadeToggle = document.getElementById(
-      "fade-toggle",
-    ) as HTMLButtonElement;
-    const rainbowToggle = document.getElementById(
-      "rainbow-toggle",
-    ) as HTMLButtonElement;
-    const animToggle = document.getElementById(
-      "anim-toggle",
-    ) as HTMLButtonElement;
-    const eraserToggle = document.getElementById(
-      "eraser-toggle",
-    ) as HTMLButtonElement;
-    const fadeSpeed = document.getElementById("fade-speed") as HTMLInputElement;
-    
-    // Tools
-    const brushToggle = document.getElementById("brush-toggle") as HTMLButtonElement;
-    const squareToggle = document.getElementById("square-toggle") as HTMLButtonElement;
-    const ellipseToggle = document.getElementById("ellipse-toggle") as HTMLButtonElement;
-    const triangleToggle = document.getElementById("triangle-toggle") as HTMLButtonElement;
-    const clearBtn = document.getElementById("clear-btn") as HTMLButtonElement;
-    const exportBtn = document.getElementById(
-      "export-btn",
-    ) as HTMLButtonElement;
-    const importBtn = document.getElementById(
-      "import-btn",
-    ) as HTMLButtonElement;
-
     const sketch = (p: p5) => {
-      let currentThickness = 25;
-      let particles: any[] = [];
-      let sparkles: any[] = []; // For the new brush sparkles
+      // ── Persistent drawing state ─────────────────────────────────────
+      const history       = createHistory(p);
+      const particles     = createParticleSystem(p);
+      const drawingEngine = createDrawingEngine(p);
 
-      // Viewport Camera State
-      let camX = 0;
-      let camY = 0;
-      const updateCamera = () => {
-        const el = document.querySelector(
-          "#p5-container canvas",
-        ) as HTMLElement;
-        if (el) {
-          el.style.transformOrigin = "0 0";
-          el.style.transform = `translate(${camX}px, ${camY}px)`;
-        }
-      };
-
-      // Store the last mouse position separately to prevent line jumping bugs
-      let lastDrawX = -1;
-      let lastDrawY = -1;
-      
-      // Global Drag lock for UI overlay clicks
-      let dragStartOnUI = false;
+      // ── Input state ──────────────────────────────────────────────────
+      let dragStartOnUI    = false;
       let isMouseOverCanvas = false;
-      let currentPressure = 1.0;
+      let currentPressure  = 1.0;
+      let isDrawing        = false;
 
-      let undoStack: any[] = [];
-      let redoStack: any[] = [];
-      let isDrawing = false;
+      // Unified input — populated by mouse (in draw) and touch hooks
+      let inputActive = false;
+      let inputX      = 0;
+      let inputY      = 0;
+      let prevInputX  = 0;
+      let prevInputY  = 0;
 
-      const saveState = () => {
-        undoStack.push(p.get());
-        if (undoStack.length > 25) undoStack.shift(); // Limit memory 
-        redoStack = []; // Any new action strictly destroys forward redo history
-      };
+      // ── Event listeners ──────────────────────────────────────────────
 
+      // Pen pressure tracking
       window.addEventListener('pointermove', (e) => {
-         if (e.pointerType === 'pen') {
-            currentPressure = e.pressure > 0.05 ? e.pressure : 1.0;
-         } else {
-            currentPressure = 1.0;
-         }
+        currentPressure = e.pointerType === 'pen' && e.pressure > 0.05
+          ? e.pressure : 1.0;
       });
-      
       window.addEventListener('pointerdown', (e) => {
-         if (e.pointerType === 'pen') {
-            currentPressure = e.pressure > 0.05 ? e.pressure : 1.0;
-         } else {
-            currentPressure = 1.0;
-         }
+        currentPressure = e.pointerType === 'pen' && e.pressure > 0.05
+          ? e.pressure : 1.0;
       });
+      window.addEventListener('pointerup',     (e) => { if (e.pointerType === 'pen') currentPressure = 1.0; });
+      window.addEventListener('pointercancel', (e) => { if (e.pointerType === 'pen') currentPressure = 1.0; });
 
-      window.addEventListener('mousedown', (e) => {
-        const target = e.target as Element;
+      // UI drag lock — prevents accidental drawing when interacting with docks
+      const setDragStartOnUI = (target: Element | null) => {
         dragStartOnUI = !!(target && target.closest('.dock'));
-      });
-
-      // Strict visibility tracking for the SVG cursor
-      window.addEventListener('DOMContentLoaded', () => {
-         const container = document.getElementById("p5-container");
-         if (container) {
-            container.addEventListener('mouseenter', () => isMouseOverCanvas = true);
-            container.addEventListener('mouseleave', () => isMouseOverCanvas = false);
-         }
-      });
-
-      // Helper function for creating particles
-      const createParticle = (x: number, y: number, vx: number, vy: number) => {
-        const h = (p.frameCount % 360) / 360;
-        p.colorMode(p.HSB, 1);
-        const c = p.color(h, 0.8, 0.7);
-        p.colorMode(p.RGB, 255);
-        return {
-          x: x,
-          y: y,
-          vx: vx,
-          vy: vy,
-          life: p.random(100, 200),
-          size: p.random(2, 8),
-          color: c,
-        };
       };
+      window.addEventListener('mousedown',  (e) => setDragStartOnUI(e.target as Element));
+      window.addEventListener('touchstart', (e) => setDragStartOnUI(e.touches[0]?.target as Element), { passive: true });
+
+      // Mouse hover tracking for cursor ring and draw guard
+      const p5Container = document.getElementById('p5-container');
+      if (p5Container) {
+        p5Container.addEventListener('mouseenter', () => { isMouseOverCanvas = true; });
+        p5Container.addEventListener('mouseleave', () => { isMouseOverCanvas = false; });
+      }
+
+      // Prevent spacebar from scrolling the page
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') e.preventDefault();
+      }, { passive: false });
+
+      // ── p5 lifecycle ─────────────────────────────────────────────────
 
       p.setup = () => {
-        p.pixelDensity(1); // Standardize for speed given the huge resolution
-        // Perfect 1:1 Aspect Ratio targeted for Instagram Export
-        const canvas = p.createCanvas(1200, 1200); 
-        canvas.parent("p5-container");
-        
-        // Force the physical DOM element to dynamically inherit container bounds via inline style
-        canvas.elt.style.width = "100%";
-        canvas.elt.style.height = "100%";
-        
-        p.background(13, 6, 23); // Deep space purple
+        setupCanvas(p);
 
-        // Freeze Camera Translation Offsets
-        camX = 0;
-        camY = 0;
-        updateCamera();
-
-        // Transparent background so exact CSS background always shows flawlessly
-        p.clear(0, 0, 0, 0);
-
-        // Better line caps for smooth connecting strokes
-        p.strokeCap(p.ROUND);
-        p.strokeJoin(p.ROUND);
-
-        clearBtn?.addEventListener("click", () => {
-          saveState();
+        // Clear canvas
+        document.getElementById('clear-btn')?.addEventListener('click', () => {
+          history.save();
           p.clear(0, 0, 0, 0);
-          particles = [];
-          sparkles = [];
-          const canvasEl = document.querySelector(
-            "#p5-container canvas",
-          ) as HTMLElement;
+          particles.clear();
+          const canvasEl = document.querySelector('#p5-container canvas') as HTMLElement;
           if (canvasEl) {
-            canvasEl.style.transition = "none";
-            canvasEl.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+            canvasEl.style.transition = 'none';
+            canvasEl.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
             setTimeout(() => {
-              canvasEl.style.transition = "background-color 0.4s ease-out";
-              canvasEl.style.backgroundColor = "transparent";
+              canvasEl.style.transition = 'background-color 0.4s ease-out';
+              canvasEl.style.backgroundColor = 'transparent';
             }, 10);
           }
         });
 
-        exportBtn?.addEventListener("click", () => {
-          const domCanvas = document.querySelector("#p5-container canvas") as HTMLCanvasElement;
-          if (!domCanvas) return;
-          
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = domCanvas.width;
-          tempCanvas.height = domCanvas.height;
-          
-          const ctx = tempCanvas.getContext("2d");
-          if (!ctx) return;
-          
-          // Fill background to match theme
-          ctx.fillStyle = "#0d0617";
-          ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-          
-          // Draw the physical pixels of the p5 canvas perfectly over it
-          ctx.drawImage(domCanvas, 0, 0);
-          
-          // Trigger download directly
-          const link = document.createElement("a");
-          link.download = "MagicalArtwork.png";
-          link.href = tempCanvas.toDataURL("image/png");
-          link.click();
+        // Export PNG
+        document.getElementById('export-btn')?.addEventListener('click', () => exportPNG());
+
+        // Import image
+        const importInput = setupImport(p, (img: p5.Image) => {
+          history.save();
+          const ratio = Math.min(p.width / img.width, p.height / img.height);
+          const newW  = img.width  * ratio;
+          const newH  = img.height * ratio;
+          p.image(img, p.width / 2 - newW / 2, p.height / 2 - newH / 2, newW, newH);
         });
+        document.getElementById('import-btn')?.addEventListener('click', () => importInput.click());
 
-        // Setup hidden file input for importing images
-        const importInput = document.createElement("input");
-        importInput.type = "file";
-        importInput.accept = "image/png, image/jpeg, image/webp";
-        importInput.style.display = "none";
-        document.body.appendChild(importInput);
+        // Undo
+        document.getElementById('undo-btn')?.addEventListener('click', () => history.undo());
 
-        importInput.addEventListener("change", (e: Event) => {
-          const file = (e.target as HTMLInputElement).files?.[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const dataUrl = event.target?.result as string;
-            p.loadImage(dataUrl, (img) => {
-              saveState();
-              // Scale imported image to perfectly fit the aspect ratio 
-              let ratio = Math.min(p.width / img.width, p.height / img.height);
-              let newW = img.width * ratio;
-              let newH = img.height * ratio;
-              
-              // Draw image over existing artifacts
-              p.image(img, p.width / 2 - newW / 2, p.height / 2 - newH / 2, newW, newH);
-            });
-          };
-          reader.readAsDataURL(file);
-          // Auto clear element value to allow re-importing the same frame!
-          importInput.value = "";
-        });
-
-        importBtn?.addEventListener("click", () => {
-          importInput.click();
-        });
-
-        const undoBtn = document.getElementById("undo-btn");
-        if (undoBtn) {
-          undoBtn.addEventListener("click", () => {
-            if (undoStack.length > 0) {
-              redoStack.push(p.get());
-              const prevState = undoStack.pop();
-              p.clear(0, 0, 0, 0); // Restore full transparency layout because background rests in native CSS!
-              p.image(prevState, 0, 0);
-            }
-          });
-        }
-
-        const redoBtn = document.getElementById("redo-btn");
-        if (redoBtn) {
-          redoBtn.addEventListener("click", () => {
-            if (redoStack.length > 0) {
-              undoStack.push(p.get());
-              const nextState = redoStack.pop();
-              p.clear(0, 0, 0, 0);
-              p.image(nextState, 0, 0);
-            }
-          });
-        }
+        // Redo
+        document.getElementById('redo-btn')?.addEventListener('click', () => history.redo());
       };
 
+      // ── Touch hooks — bridge touch into unified input state ──────────
+
+      p.touchStarted = () => {
+        if (p.touches.length > 0) {
+          const t = p.touches[0] as any;
+          prevInputX = t.x;
+          prevInputY = t.y;
+          inputX     = t.x;
+          inputY     = t.y;
+          inputActive = true;
+        }
+        return false; // Prevents default scroll/zoom on iOS Safari
+      };
+
+      p.touchMoved = () => {
+        if (p.touches.length > 0) {
+          const t = p.touches[0] as any;
+          prevInputX = inputX;
+          prevInputY = inputY;
+          inputX = t.x;
+          inputY = t.y;
+        }
+        return false; // Critical: prevents page scroll while drawing
+      };
+
+      p.touchEnded = () => {
+        if (p.touches.length === 0) inputActive = false;
+        return false;
+      };
+
+      // ── Draw loop ────────────────────────────────────────────────────
+
       p.draw = () => {
-        // --- Apply Optional Fade Effect ---
-        if (fadeToggle?.classList.contains("active")) {
-          const speedVal = parseInt(fadeSpeed?.value || "5");
-          const ctx = p.drawingContext as CanvasRenderingContext2D;
-          ctx.save();
-          ctx.globalCompositeOperation = "destination-out";
-          ctx.shadowBlur = 0;
-          
-          // Drastically reduced fade alpha bounds for super slow trailing
-          let fadeAlpha = p.map(speedVal, 1, 60, 0.0001, 0.005); // Reduced max fade for dramatic effect
-          ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
-          ctx.fillRect(0, 0, p.width, p.height);
-          ctx.restore();
-        }
+        const ui   = getUIState();
+        const tool = getActiveTool(ui);
 
+        // Fade/trail effect
+        if (ui.isFadeActive) applyFadeEffect(p, ui.fadeSpeed);
 
+        // Cursor ring (desktop/stylus only — hidden on touch)
+        updateCursorRing(p, isMouseOverCanvas, ui, tool);
 
-        // --- Space To Pan Canvas ---
-        const uiContainer = document.getElementById("p5-container") as HTMLElement;
-        const cursorRing = document.getElementById("cursor-ring") as HTMLElement;
-        const canvasEl = document.querySelector("#p5-container canvas") as HTMLElement;
-        
-        // Hide/Show correct UI elements
-        if (cursorRing && canvasEl) {
-          if (isMouseOverCanvas && !p.keyIsDown(32)) {
-            cursorRing.style.display = "block";
-            canvasEl.style.cursor = "none";
+        // Sync mouse into unified input (touch hooks update directly)
+        if (p.touches.length === 0) {
+          if (p.mouseIsPressed && isMouseOverCanvas) {
+            inputActive = true;
+            inputX      = p.mouseX;
+            inputY      = p.mouseY;
+            prevInputX  = p.pmouseX;
+            prevInputY  = p.pmouseY;
           } else {
-             cursorRing.style.display = "none";
-             canvasEl.style.cursor = p.keyIsDown(32) ? (p.mouseIsPressed ? "grabbing" : "grab") : "default";
+            inputActive = false;
           }
         }
 
-        if (false) {
-          // Spacebar Panning Mode
-          if (uiContainer)
-            uiContainer.style.cursor = p.mouseIsPressed ? "grabbing" : "grab";
-          if (p.mouseIsPressed) {
-            // Apply Physical view panning via CSS transform!
-            // This never drops quality and is totally infinite matching the canvas bounds
-            camX += p.winMouseX - p.pwinMouseX;
-            camY += p.winMouseY - p.pwinMouseY;
-            updateCamera();
-          }
-          lastDrawX = -1; // Prevent brushing while panning
-          return;
-        } else {
-          // In Drawing Mode
-          if (uiContainer) uiContainer.style.cursor = "none";
-          
-          if (cursorRing) {
-             let thickness = parseInt(sizePicker?.value || "25");
-             let scaleFac = canvasEl.clientWidth / p.width; 
-             let screenThickness = thickness * scaleFac; // Physically map WebGL 1200px footprint into exact CSS Screen dimensions!
-             let finalRingSize = screenThickness;
-             
-             // Fetch internal SVG elements
-             const cCircle = document.getElementById("cursor-circle");
-             const cSquare = document.getElementById("cursor-square");
-             const cTri = document.getElementById("cursor-triangle");
+        // Drawing gate: active input, not blocked by UI, not panning
+        const canDraw = inputActive && !dragStartOnUI && !p.keyIsDown(32)
+          && (p.touches.length > 0 || isMouseOverCanvas);
 
-             if (cCircle) cCircle.style.display = "none";
-             if (cSquare) cSquare.style.display = "none";
-             if (cTri) cTri.style.display = "none";
-             
-             // Match geometry based on active tool!
-             if (eraserToggle?.classList.contains("active")) {
-                if (cCircle) cCircle.style.display = "block";
-                finalRingSize = screenThickness * 1.5;
-             } else if (squareToggle?.classList.contains("active")) {
-                if (cSquare) cSquare.style.display = "block";
-                finalRingSize = screenThickness * 2.0;
-             } else if (ellipseToggle?.classList.contains("active")) {
-                if (cCircle) cCircle.style.display = "block";
-                finalRingSize = screenThickness * 2.0;
-             } else if (triangleToggle?.classList.contains("active")) {
-                if (cTri) cTri.style.display = "block";
-                finalRingSize = screenThickness * 3.0; // The SVG is radius=50, container scales by 3x gives radius 1.5x matching p.triangle!
-             } else {
-                if (cCircle) cCircle.style.display = "block";
-                finalRingSize = screenThickness; // Standard Brush
-             }
-
-             cursorRing.style.width = finalRingSize + "px";
-             cursorRing.style.height = finalRingSize + "px";
-             cursorRing.style.left = p.winMouseX + "px";
-             cursorRing.style.top = p.winMouseY + "px";
-          }
-        }
-        
-        // --- Improved Smooth Brush Engine ---
-        // Main Drawing logic hook
-        if (p.mouseIsPressed && isMouseOverCanvas && !dragStartOnUI && !p.keyIsDown(32)) {
+        if (canDraw) {
           if (!isDrawing) {
             isDrawing = true;
-            saveState(); // Anchor exactly one frame explicitly at the opening of the physical stroke!
+            history.save(); // Snapshot at the start of each stroke
           }
-
-          if (eraserToggle?.classList.contains("active")) {
-            // Eraser Tool
-            (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0;
-            let currentThickness = parseInt(sizePicker?.value || "25");
-            let opacityVal = parseInt(opacityPicker?.value || "100");
-            let eraseStrength = p.map(opacityVal, 0, 100, 0, 255); // p5.js native scale is 255 for blending
-
-            p.erase(eraseStrength, eraseStrength);
-            p.strokeWeight(currentThickness * 1.5); // Eraser is a bit thicker
-            p.line(p.mouseX, p.mouseY, p.pmouseX, p.pmouseY);
-            p.noErase();
-          } else {
-            // If we just clicked or dragged in, update start points
-            if (lastDrawX === -1) {
-              lastDrawX = p.mouseX;
-              lastDrawY = p.mouseY;
-              currentThickness = parseInt(sizePicker?.value || "25");
-            }
-
-            let baseSize = parseInt(sizePicker?.value || "25");
-
-            // Apply hardware pen pressure strictly without random jitter desync
-            currentThickness = Math.max(baseSize * currentPressure, baseSize * 0.1);
-
-            const baseC = p.color(colorPicker?.value || "#b496ff");
-
-            // Additional randomness: Iridescent Hue Shifting
-            p.colorMode(p.HSB);
-            let h = p.hue(baseC);
-            let s = p.saturation(baseC);
-            let b = p.brightness(baseC);
-
-            if (rainbowToggle?.classList.contains("active")) {
-               // Hyper-active smooth randomized frame cycle!
-               h = (p.frameCount * 5) % 360;
-               s = 100;
-               b = 100;
-            }
-
-            // Shift the hue wildly around the base color, creating pearlescent neon
-            let offsetH = (h + p.random(-25, 25) + 360) % 360;
-            let sSat = p.constrain(s + p.random(-10, 10), 0, 100);
-            const c = p.color(offsetH, sSat, b);
-            p.colorMode(p.RGB); // Restore back to RGB for rendering
-
-            // Add a magical neon glow using native canvas API
-            (p.drawingContext as CanvasRenderingContext2D).shadowBlur =
-              baseSize * p.random(0.6, 1.0); // Randomize glow intensity
-            (p.drawingContext as CanvasRenderingContext2D).shadowColor =
-              c.toString();
-
-            let opacityVal = parseInt(opacityPicker?.value || "100") / 100.0;
-            let alphaBase = p.random(180, 220) * opacityVal;
-
-            // Stroke drawing with randomized alpha
-            p.stroke(p.red(c), p.green(c), p.blue(c), alphaBase);
-            p.strokeWeight(currentThickness);
-
-            // Draw shape depending on selected tool
-            if (squareToggle?.classList.contains("active")) {
-              p.noStroke();
-              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
-              p.rectMode(p.CENTER);
-              p.rect(p.mouseX, p.mouseY, currentThickness * 2.0, currentThickness * 2.0);
-            } else if (ellipseToggle?.classList.contains("active")) {
-              p.noStroke();
-              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
-              p.ellipse(p.mouseX, p.mouseY, currentThickness * 2.0, currentThickness * 2.0);
-            } else if (triangleToggle?.classList.contains("active")) {
-              p.noStroke();
-              p.fill(p.red(c), p.green(c), p.blue(c), alphaBase);
-              let size = currentThickness * 1.5;
-              p.triangle(
-                p.mouseX, p.mouseY - size,
-                p.mouseX - size * 0.866, p.mouseY + size * 0.5,
-                p.mouseX + size * 0.866, p.mouseY + size * 0.5
-              );
-            } else {
-              // Default Brush Line
-              p.line(lastDrawX, lastDrawY, p.mouseX, p.mouseY);
-            }
-
-            // Constant subtle ambient sparkles (circles and crosses)
-            if (p.random(1) > 0.4) {
-              let sparkBase = baseSize * 0.5;
-              let spread = baseSize * p.random(1, 3); // Random spread radius
-              let px = p.mouseX + p.random(-spread, spread);
-              let py = p.mouseY + p.random(-spread, spread);
-
-              (p.drawingContext as CanvasRenderingContext2D).shadowBlur =
-                Math.max(3, sparkBase);
-              (p.drawingContext as CanvasRenderingContext2D).shadowColor =
-                c.toString();
-
-              // Randomly pick a sparkle star or a circle
-              if (p.random(1) > 0.7) {
-                p.stroke(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
-                p.strokeWeight(p.random(1, 2));
-                p.noFill();
-                let crossS = p.random(2, sparkBase * 0.5);
-                p.line(px - crossS, py, px + crossS, py);
-                p.line(px, py - crossS, px, py + crossS);
-              } else {
-                p.noStroke();
-                p.fill(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
-                p.circle(px, py, p.random(1, Math.max(2, sparkBase * 0.5)));
-              }
-            }
-
-            // Energetic flying lines / sparks with directional burst
-            if (p.random(1) > 0.9) {
-              let px = p.mouseX + p.random(-baseSize * 1.5, baseSize * 1.5);
-              let py = p.mouseY + p.random(-baseSize * 1.5, baseSize * 1.5);
-              let pSize = currentThickness * p.random(0.5, 1.5); // Randomize spark line size
-
-              if (animToggle?.classList.contains("active")) {
-                // Create directional drift towards the stroke
-                let dirX = p.mouseX - lastDrawX;
-                let dirY = p.mouseY - lastDrawY;
-
-                particles.push({
-                  x: px,
-                  y: py,
-                  vx: dirX * p.random(0.1, 0.4) + p.random(-4, 4), // Burst with mouse velocity
-                  vy: dirY * p.random(0.1, 0.4) + p.random(-4, 4),
-                  life: p.random(150, 255),
-                  size: pSize,
-                  angle: p.random(p.TWO_PI),
-                  rotSpeed: p.random(-0.15, 0.15),
-                  r: p.red(c),
-                  g: p.green(c),
-                  b: p.blue(c),
-                  colorStr: c.toString(),
-                  lenMult: p.random(0.2, 0.7), // Randomize line length individually
-                });
-              } else {
-                // Draw static random length line
-                (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0; // optimized
-                p.stroke(p.red(c), p.green(c), p.blue(c), p.random(150, 255));
-                p.strokeWeight(Math.max(1, pSize * 0.05));
-                p.noFill();
-                let l = pSize * p.random(0.2, 0.7);
-                let a = p.random(p.TWO_PI);
-
-                // Trig instead of translate/rotate saves massive CPU calls
-                p.beginShape();
-                p.vertex(px - Math.cos(a) * l, py - Math.sin(a) * l);
-                p.vertex(px + Math.cos(a) * l, py + Math.sin(a) * l);
-                p.endShape();
-              }
-            }
-          }
-
-          lastDrawX = p.mouseX;
-          lastDrawY = p.mouseY;
+          drawingEngine.drawAtPoint({
+            tool, inputX, inputY, prevInputX, prevInputY,
+            currentPressure,
+            color:     ui.color,
+            size:      ui.size,
+            opacity:   ui.opacity,
+            isRainbow: ui.isRainbowActive,
+            isAnim:    ui.isAnimActive,
+          }, particles);
         } else {
-          // Reset stroke tracking when mouse is lifted
-          isDrawing = false;
-          lastDrawX = -1;
-        }
-
-        // --- Animate Active Particles ---
-        if (particles.length > 0) {
-          for (let i = particles.length - 1; i >= 0; i--) {
-            let pt = particles[i];
-
-            // Move particle
-            pt.x += pt.vx;
-            pt.y += pt.vy;
-            // Add some organic drift
-            pt.vx += p.random(-1, 1);
-            pt.vy += p.random(-1, 1);
-
-            if (pt.angle !== undefined) {
-              pt.angle += pt.rotSpeed || 0;
-            }
-
-            // Apply air friction
-            pt.vx *= 0.99;
-            pt.vy *= 0.99;
-            pt.life -= 2;
-
-            if (pt.life <= 0) {
-              particles.splice(i, 1);
-            } else {
-              // Heavy optimization: Disable individual particle shadowBlurs inside loop
-              (p.drawingContext as CanvasRenderingContext2D).shadowBlur = 0;
-
-              let pr = pt.r !== undefined ? pt.r : 255;
-              let pg = pt.g !== undefined ? pt.g : 255;
-              let pb = pt.b !== undefined ? pt.b : 255;
-              p.stroke(pr, pg, pb, Math.min(255, pt.life));
-              p.strokeWeight(Math.max(1, pt.size * 0.03));
-              p.noFill();
-              p.strokeCap(p.ROUND);
-              p.strokeJoin(p.ROUND);
-
-              let l = pt.size * (pt.lenMult || 0.4);
-              let a = pt.angle !== undefined ? pt.angle : 0;
-
-              // Trig instead of canvas matrices for high FPS
-              p.beginShape();
-              p.vertex(pt.x - Math.cos(a) * l, pt.y - Math.sin(a) * l);
-              p.vertex(pt.x + Math.cos(a) * l, pt.y + Math.sin(a) * l);
-              p.endShape();
-            }
+          // Stroke ended — reset tracking
+          if (isDrawing) {
+            isDrawing = false;
+            drawingEngine.resetStroke();
           }
         }
+
+        // Advance and render all live particles
+        particles.update();
       };
 
       p.windowResized = () => {
-        // Viewport effortlessly crops canvas natively. Render size doesn't need to rebuild!
+        // Canvas renders at fixed 1200×1200 — CSS scales it to fit.
+        // No resize needed here.
       };
     };
-
-    // Lock page spacebar from destroying UX natively
-    window.addEventListener(
-      "keydown",
-      (e) => {
-        if (e.code === "Space") e.preventDefault();
-      },
-      { passive: false },
-    );
 
     new p5(sketch);
   };
 
-  if (typeof window !== "undefined") {
+  if (typeof window !== 'undefined') {
     initP5();
   }
 </script>
-
-

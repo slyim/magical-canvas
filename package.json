@@ -1,7 +1,6 @@
 {
-  "name": "nasty-neptune",
+  "name": "magical-canvas",
   "type": "module",
-  "main": "main.js",
   "version": "0.0.1",
   "engines": {
     "node": ">=20.0.0"

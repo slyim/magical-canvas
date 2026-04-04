@@ -27,3 +27,22 @@ pnpm-debug.log*
 release/
 src-tauri/
 magical-canvas-rs/
+
+# Electron build artifacts
+build/
+out/
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+
+# Test/coverage output
+coverage/
