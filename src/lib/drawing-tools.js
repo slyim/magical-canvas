@@ -72,13 +72,37 @@ export function createDrawingEngine(p) {
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 function drawEraser(p, inputX, inputY, prevInputX, prevInputY, size, opacity) {
-  p.drawingContext.shadowBlur = 0;
-  // p5.js erase() uses 0–255 blend strength (different from brush's normalized 0–1)
-  const eraseStrength = p.map(opacity, 0, 100, 0, 255);
-  p.erase(eraseStrength, eraseStrength);
-  p.strokeWeight(size * 1.5); // Eraser slightly thicker than brush for usability
-  p.line(inputX, inputY, prevInputX, prevInputY);
-  p.noErase();
+  // p5.js 2.x `line()` bails out when `states.strokeColor` is null (e.g. after a
+  // shape tool called noStroke(), or on very first use before any brush stroke).
+  // `erase()` only rewrites drawingContext.strokeStyle, not p5's internal state —
+  // so the cheap p5 API silently becomes a no-op. Drive the native 2D context
+  // directly and restore every touched field so we never re-trigger that trap.
+  const ctx = p.drawingContext;
+  const prevComposite = ctx.globalCompositeOperation;
+  const prevStroke    = ctx.strokeStyle;
+  const prevWidth     = ctx.lineWidth;
+  const prevBlur      = ctx.shadowBlur;
+  const prevCap       = ctx.lineCap;
+  const prevJoin      = ctx.lineJoin;
+
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.strokeStyle = `rgba(0,0,0,${Math.max(0, Math.min(1, opacity / 100))})`;
+  ctx.lineWidth   = size * 1.5;
+  ctx.shadowBlur  = 0;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(prevInputX, prevInputY);
+  ctx.lineTo(inputX, inputY);
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = prevComposite;
+  ctx.strokeStyle = prevStroke;
+  ctx.lineWidth   = prevWidth;
+  ctx.shadowBlur  = prevBlur;
+  ctx.lineCap     = prevCap;
+  ctx.lineJoin    = prevJoin;
 }
 
 /**

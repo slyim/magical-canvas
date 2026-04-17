@@ -188,6 +188,29 @@ button.active {
   width: 100%;
 }
 
+/* ── Mode + tool set ──────────────────────────────────────────────── */
+.mode-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.tool-set {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  width: 100%;
+}
+.tool-set[hidden] { display: none; }
+
+@media (max-width: 1000px) {
+  .tool-set {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
 /* ── Dividers ─────────────────────────────────────────────────────── */
 .divider {
   width: 2px;
