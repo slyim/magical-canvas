@@ -13,6 +13,12 @@ import "../styles/style.css";
       <!-- TOP DOCK -->
       <div class="dock dock-top">
         <div class="control-group">
+          <label>Mode</label>
+          <button id="mode-2d" class="mode-btn active">2D</button>
+          <button id="mode-3d" class="mode-btn">3D</button>
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
           <label for="color-picker">Color</label>
           <input type="color" id="color-picker" value="#b496ff" />
         </div>
@@ -30,14 +36,31 @@ import "../styles/style.css";
 
       <!-- LEFT DOCK -->
       <div class="dock dock-left">
-        <label>Tools</label>
-        <button id="brush-toggle" class="tool-btn active">Brush</button>
-        <button id="eraser-toggle" class="tool-btn">Eraser</button>
-        <div class="divider-h"></div>
-        <label>Shapes</label>
-        <button id="square-toggle" class="tool-btn">Square</button>
-        <button id="ellipse-toggle" class="tool-btn">Ellipse</button>
-        <button id="triangle-toggle" class="tool-btn">Triangle</button>
+        <!-- 2D tools -->
+        <div class="tool-set" data-mode="2d">
+          <label>Tools</label>
+          <button id="brush-toggle" class="tool-btn active">Brush</button>
+          <button id="eraser-toggle" class="tool-btn">Eraser</button>
+          <div class="divider-h"></div>
+          <label>Shapes</label>
+          <button id="square-toggle" class="tool-btn">Square</button>
+          <button id="ellipse-toggle" class="tool-btn">Ellipse</button>
+          <button id="triangle-toggle" class="tool-btn">Triangle</button>
+        </div>
+        <!-- 3D tools -->
+        <div class="tool-set" data-mode="3d" hidden>
+          <label>Cosmos</label>
+          <button id="planet-toggle"    class="tool-btn tool-3d active">Planet</button>
+          <button id="star-toggle"      class="tool-btn tool-3d">Star</button>
+          <button id="sun-toggle"       class="tool-btn tool-3d">Sun</button>
+          <button id="moon-toggle"      class="tool-btn tool-3d">Moon</button>
+          <div class="divider-h"></div>
+          <label>Phenomena</label>
+          <button id="nebula-toggle"    class="tool-btn tool-3d">Nebula</button>
+          <button id="comet-toggle"     class="tool-btn tool-3d">Comet</button>
+          <button id="blackhole-toggle" class="tool-btn tool-3d">Black Hole</button>
+          <button id="rings-toggle"     class="tool-btn tool-3d">Rings</button>
+        </div>
       </div>
 
       <!-- CENTER WORKSPACE -->
