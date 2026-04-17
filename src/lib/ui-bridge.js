@@ -1,55 +1,39 @@
 import { DEFAULT_COLOR, DEFAULT_SIZE, DEFAULT_OPACITY } from "./constants.js";
 
 /**
- * Reads all UI control values from the DOM once per call.
- * Called inside p.draw() each frame so values are always current.
+ * Lazy-cached refs to the DOM controls. getUIState() runs every draw frame,
+ * so looking these up once — not 11× per frame — matters.
  */
+const refs = {};
+const resolve = (id) => (refs[id] ??= document.getElementById(id));
+
+const intVal = (id, fallback) => {
+  const el = resolve(id);
+  const n = parseInt(el?.value ?? "", 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const isActive = (id) => resolve(id)?.classList.contains("active") ?? false;
+
+/** Snapshot all UI control values. Called once per draw frame. */
 export function getUIState() {
   return {
-    color: document.getElementById("color-picker")?.value ?? DEFAULT_COLOR,
-    size: parseInt(
-      document.getElementById("size-picker")?.value || String(DEFAULT_SIZE),
-      10,
-    ),
-    opacity: parseInt(
-      document.getElementById("opacity-picker")?.value ||
-        String(DEFAULT_OPACITY),
-      10,
-    ),
-    fadeSpeed: parseInt(
-      document.getElementById("fade-speed")?.value || "5",
-      10,
-    ),
+    color: resolve("color-picker")?.value ?? DEFAULT_COLOR,
+    size: intVal("size-picker", DEFAULT_SIZE),
+    opacity: intVal("opacity-picker", DEFAULT_OPACITY),
+    fadeSpeed: intVal("fade-speed", 5),
 
-    isFadeActive:
-      document.getElementById("fade-toggle")?.classList.contains("active") ??
-      false,
-    isRainbowActive:
-      document.getElementById("rainbow-toggle")?.classList.contains("active") ??
-      false,
-    isAnimActive:
-      document.getElementById("anim-toggle")?.classList.contains("active") ??
-      true,
-    isEraserActive:
-      document.getElementById("eraser-toggle")?.classList.contains("active") ??
-      false,
-    isSquareActive:
-      document.getElementById("square-toggle")?.classList.contains("active") ??
-      false,
-    isEllipseActive:
-      document.getElementById("ellipse-toggle")?.classList.contains("active") ??
-      false,
-    isTriangleActive:
-      document
-        .getElementById("triangle-toggle")
-        ?.classList.contains("active") ?? false,
+    isFadeActive: isActive("fade-toggle"),
+    isRainbowActive: isActive("rainbow-toggle"),
+    isAnimActive: resolve("anim-toggle")?.classList.contains("active") ?? true,
+    isEraserActive: isActive("eraser-toggle"),
+    isSquareActive: isActive("square-toggle"),
+    isEllipseActive: isActive("ellipse-toggle"),
+    isTriangleActive: isActive("triangle-toggle"),
   };
 }
 
-/**
- * Returns the currently active drawing tool name.
- * Defaults to 'brush' when no shape tool is active.
- */
+/** Returns the currently active drawing tool. Defaults to 'brush'. */
 export function getActiveTool(ui) {
   if (ui.isEraserActive) return "eraser";
   if (ui.isSquareActive) return "square";

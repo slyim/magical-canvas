@@ -129,6 +129,7 @@
           history.save();
           p.clear(0, 0, 0, 0);
           particles.clear();
+          drawingEngine.resetStroke();
           const canvasEl = document.querySelector('#p5-container canvas') as HTMLElement;
           if (canvasEl) {
             canvasEl.style.transition = 'none';
@@ -153,16 +154,22 @@
         });
         document.getElementById('import-btn')?.addEventListener('click', () => importInput.click());
 
-        // Undo
-        document.getElementById('undo-btn')?.addEventListener('click', () => history.undo());
+        // Undo — reset engine so the in-progress stroke doesn't bridge across the jump
+        document.getElementById('undo-btn')?.addEventListener('click', () => {
+          if (history.undo()) drawingEngine.resetStroke();
+        });
 
         // Redo
-        document.getElementById('redo-btn')?.addEventListener('click', () => history.redo());
+        document.getElementById('redo-btn')?.addEventListener('click', () => {
+          if (history.redo()) drawingEngine.resetStroke();
+        });
       };
 
       // ── Touch hooks — bridge touch into unified input state ──────────
+      // p5 instance-mode lifecycle hooks aren't on the TS type; cast once.
+      const pt = p as any;
 
-      p.touchStarted = () => {
+      pt.touchStarted = () => {
         if (p.touches.length > 0) {
           const t = p.touches[0] as any;
           prevInputX = t.x;
@@ -174,7 +181,7 @@
         return false; // Prevents default scroll/zoom on iOS Safari
       };
 
-      p.touchMoved = () => {
+      pt.touchMoved = () => {
         if (p.touches.length > 0) {
           const t = p.touches[0] as any;
           prevInputX = inputX;
@@ -185,8 +192,15 @@
         return false; // Critical: prevents page scroll while drawing
       };
 
-      p.touchEnded = () => {
+      pt.touchEnded = () => {
         if (p.touches.length === 0) inputActive = false;
+        return false;
+      };
+
+      // Handle system interruptions (call, notification) so input isn't left stuck
+      pt.touchCancelled = () => {
+        inputActive = false;
+        drawingEngine.resetStroke();
         return false;
       };
 

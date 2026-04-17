@@ -1,4 +1,8 @@
-import { SPARKLE_PROBABILITY_THRESHOLD, SPARK_PROBABILITY_THRESHOLD } from './constants.js';
+import {
+  SPARKLE_PROBABILITY_THRESHOLD,
+  SPARK_PROBABILITY_THRESHOLD,
+  DEFAULT_SIZE,
+} from './constants.js';
 
 /**
  * Creates a stateful drawing engine.
@@ -8,7 +12,7 @@ import { SPARKLE_PROBABILITY_THRESHOLD, SPARK_PROBABILITY_THRESHOLD } from './co
 export function createDrawingEngine(p) {
   let lastDrawX = -1;
   let lastDrawY = -1;
-  let currentThickness = 25;
+  let currentThickness = DEFAULT_SIZE;
 
   return {
     /**
@@ -60,6 +64,7 @@ export function createDrawingEngine(p) {
     /** Reset tracking at end of stroke (called when input is lifted). */
     resetStroke() {
       lastDrawX = -1;
+      lastDrawY = -1;
     },
   };
 }

@@ -43,6 +43,7 @@ desktop.ini
 
 # Editor
 .vscode/
+.claude/
 
 # Test/coverage output
 coverage/

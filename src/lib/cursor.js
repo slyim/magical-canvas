@@ -1,58 +1,64 @@
+let cursorRing = null;
+let canvasEl = null;
+let circleEl = null;
+let squareEl = null;
+let triangleEl = null;
+
+const resolve = () => {
+  cursorRing ??= document.getElementById("cursor-ring");
+  canvasEl ??= document.querySelector("#p5-container canvas");
+  circleEl ??= document.getElementById("cursor-circle");
+  squareEl ??= document.getElementById("cursor-square");
+  triangleEl ??= document.getElementById("cursor-triangle");
+};
+
+const SHAPE_SCALE = {
+  eraser: 1.5,
+  square: 2.0,
+  ellipse: 2.0,
+  triangle: 3.0, // viewBox radius 50 → 3× scale matches p.triangle()'s 1.5× radius
+  brush: 1.0,
+};
+
 /**
- * Updates the SVG cursor ring position and shape to match the active tool and brush size.
- * The ring is hidden on touch input (no pointer to follow) and when mouse leaves the canvas.
+ * Syncs the SVG cursor ring's position, shape, and size to the active tool.
+ * Hidden on touch and when the pointer leaves the canvas.
  */
 export function updateCursorRing(p, isMouseOverCanvas, ui, tool) {
-  const cursorRing = document.getElementById('cursor-ring');
-  const canvasEl   = document.querySelector('#p5-container canvas');
+  resolve();
   if (!cursorRing || !canvasEl) return;
 
-  // Hide cursor ring on touch devices — there's no pointer to follow
   const isTouch = p.touches && p.touches.length > 0;
+  const panning = p.keyIsDown(32);
 
-  if (!isMouseOverCanvas || p.keyIsDown(32) || isTouch) {
-    cursorRing.style.display = 'none';
-    canvasEl.style.cursor = p.keyIsDown(32) ? (p.mouseIsPressed ? 'grabbing' : 'grab') : 'default';
+  if (!isMouseOverCanvas || panning || isTouch) {
+    cursorRing.style.display = "none";
+    canvasEl.style.cursor = panning
+      ? p.mouseIsPressed ? "grabbing" : "grab"
+      : "default";
     return;
   }
 
-  cursorRing.style.display = 'block';
-  canvasEl.style.cursor = 'none';
+  cursorRing.style.display = "block";
+  canvasEl.style.cursor = "none";
 
-  // Map the 1200px canvas coordinate space into CSS screen pixels
+  // Canvas-space → CSS pixel space
   const scaleFactor = canvasEl.clientWidth / p.width;
   const screenThickness = ui.size * scaleFactor;
 
-  const circleEl   = document.getElementById('cursor-circle');
-  const squareEl   = document.getElementById('cursor-square');
-  const triangleEl = document.getElementById('cursor-triangle');
+  if (circleEl) circleEl.style.display = "none";
+  if (squareEl) squareEl.style.display = "none";
+  if (triangleEl) triangleEl.style.display = "none";
 
-  // Reset all shapes, then show the one that matches the active tool
-  if (circleEl)   circleEl.style.display   = 'none';
-  if (squareEl)   squareEl.style.display   = 'none';
-  if (triangleEl) triangleEl.style.display = 'none';
+  const finalSize = screenThickness * (SHAPE_SCALE[tool] ?? 1.0);
+  const shown =
+    tool === "square" ? squareEl :
+    tool === "triangle" ? triangleEl :
+    circleEl; // brush, eraser, ellipse
+  if (shown) shown.style.display = "block";
 
-  let finalSize = screenThickness;
-
-  if (tool === 'eraser') {
-    if (circleEl) circleEl.style.display = 'block';
-    finalSize = screenThickness * 1.5;
-  } else if (tool === 'square') {
-    if (squareEl) squareEl.style.display = 'block';
-    finalSize = screenThickness * 2.0;
-  } else if (tool === 'ellipse') {
-    if (circleEl) circleEl.style.display = 'block';
-    finalSize = screenThickness * 2.0;
-  } else if (tool === 'triangle') {
-    if (triangleEl) triangleEl.style.display = 'block';
-    finalSize = screenThickness * 3.0; // SVG viewBox radius=50; 3x scale = radius 1.5x, matching p.triangle()
-  } else {
-    if (circleEl) circleEl.style.display = 'block';
-    finalSize = screenThickness; // Standard brush
-  }
-
-  cursorRing.style.width  = finalSize + 'px';
-  cursorRing.style.height = finalSize + 'px';
-  cursorRing.style.left   = p.winMouseX + 'px';
-  cursorRing.style.top    = p.winMouseY + 'px';
+  cursorRing.style.width = finalSize + "px";
+  cursorRing.style.height = finalSize + "px";
+  cursorRing.style.left = p.winMouseX + "px";
+  cursorRing.style.top = p.winMouseY + "px";
 }
