@@ -1,12 +1,18 @@
 import { BACKGROUND_HEX } from './constants.js';
 
 /**
- * Exports the current canvas as a 1200×1200 PNG.
- * Composites the dark background color behind the transparent p5 canvas
- * so the exported image always has the correct theme background.
+ * Exports the 2D canvas as a 1200×1200 PNG.
+ *
+ * Explicit `:not(.three-d-canvas)` selector so this never grabs the WEBGL
+ * canvas — the 3D renderer is constructed first in main.ts, which means a
+ * plain `#p5-container canvas` lookup returns the 3D one even while the 2D
+ * view is visible.
+ *
+ * Composites the dark background color behind the transparent p5 canvas so
+ * the exported image always has the correct theme background.
  */
 export function exportPNG() {
-  const domCanvas = document.querySelector('#p5-container canvas');
+  const domCanvas = document.querySelector('#p5-container canvas:not(.three-d-canvas)');
   if (!domCanvas) return;
 
   const temp = document.createElement('canvas');
