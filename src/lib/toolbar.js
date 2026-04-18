@@ -1,5 +1,7 @@
 /**
- * Wires up toolbar button behavior:
+ * Wires up the DOM controls that live alongside the canvas.
+ *
+ * Three kinds of buttons:
  *   - `.toggle-btn`  — independently toggleable effects (rainbow, fade, animate).
  *   - `.tool-btn`    — mutually exclusive tools. Tools are scoped to their
  *                      visible tool-set (2D or 3D), so each mode keeps its own
@@ -8,15 +10,15 @@
  *                      toggles visibility of the two `.tool-set` groups and
  *                      dispatches a `mode-change` event that the canvas host
  *                      listens for to show/hide the appropriate renderer.
+ *
+ * Also keeps the 3D slider readouts live — each slider has a sibling
+ * `.slider-value[data-for=<id>]` that mirrors the current value.
  */
 export function initToolbar() {
   document.querySelectorAll(".toggle-btn").forEach((btn) => {
     btn.addEventListener("click", () => btn.classList.toggle("active"));
   });
 
-  // Each tool-set is a scope — picking a tool only deactivates siblings in
-  // the same set. That way the 2D "brush" stays remembered even while the 3D
-  // panel is visible, and vice versa.
   document.querySelectorAll(".tool-set").forEach((set) => {
     const toolBtns = set.querySelectorAll(".tool-btn");
     toolBtns.forEach((btn) => {
@@ -28,7 +30,6 @@ export function initToolbar() {
     });
   });
 
-  // Mode switch — shows/hides the 2D or 3D tool set and emits an event.
   const modeBtns = document.querySelectorAll(".mode-btn");
   modeBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -42,5 +43,15 @@ export function initToolbar() {
       });
       window.dispatchEvent(new CustomEvent("mode-change", { detail: { mode } }));
     });
+  });
+
+  // Live slider readouts — every input[type=range] inside a .slider-row gets
+  // its current value mirrored into the sibling .slider-value span.
+  document.querySelectorAll(".slider-row input[type=range]").forEach((input) => {
+    const readout = document.querySelector(`.slider-value[data-for="${input.id}"]`);
+    if (!readout) return;
+    const sync = () => { readout.textContent = input.value; };
+    input.addEventListener("input", sync);
+    sync(); // initial paint — in case the default value differs
   });
 }

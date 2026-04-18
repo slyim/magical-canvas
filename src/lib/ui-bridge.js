@@ -1,8 +1,9 @@
 import { DEFAULT_COLOR, DEFAULT_SIZE, DEFAULT_OPACITY } from "./constants.js";
 
 /**
- * Lazy-cached refs to the DOM controls. getUIState() runs every draw frame,
- * so looking these up once — not 11× per frame — matters.
+ * UI bridge — the DOM is the source of truth for tool state, this module just
+ * snapshots it each frame. Element refs are lazy-cached because `getUIState()`
+ * runs inside the draw loop and we don't want 11 DOM queries per frame.
  */
 const refs = {};
 const resolve = (id) => (refs[id] ??= document.getElementById(id));
@@ -26,22 +27,29 @@ export function getUIState() {
     isFadeActive: isActive("fade-toggle"),
     isRainbowActive: isActive("rainbow-toggle"),
     isAnimActive: resolve("anim-toggle")?.classList.contains("active") ?? true,
-    // 2D tools
+
+    // 2D tools — mutually exclusive within the 2D tool-set
     isEraserActive: isActive("eraser-toggle"),
     isSquareActive: isActive("square-toggle"),
     isEllipseActive: isActive("ellipse-toggle"),
     isTriangleActive: isActive("triangle-toggle"),
-    // 3D tools
-    isPlanetActive:    isActive("planet-toggle"),
-    isStarActive:      isActive("star-toggle"),
-    isSunActive:       isActive("sun-toggle"),
-    isMoonActive:      isActive("moon-toggle"),
-    isNebulaActive:    isActive("nebula-toggle"),
-    isCometActive:     isActive("comet-toggle"),
-    isBlackholeActive: isActive("blackhole-toggle"),
-    isRingsActive:     isActive("rings-toggle"),
+
     // Mode
     is3D: isActive("mode-3d"),
+  };
+}
+
+/** Snapshot of the 3D generative counts — one slider per object type. */
+export function get3DCounts() {
+  return {
+    planets:    intVal("count-planets",    3),
+    moons:      intVal("count-moons",      2),
+    stars:      intVal("count-stars",      8),
+    suns:       intVal("count-suns",       1),
+    nebulas:    intVal("count-nebulas",    1),
+    comets:     intVal("count-comets",     2),
+    blackholes: intVal("count-blackholes", 0),
+    rings:      intVal("count-rings",      1),
   };
 }
 
@@ -52,16 +60,4 @@ export function getActiveTool(ui) {
   if (ui.isEllipseActive) return "ellipse";
   if (ui.isTriangleActive) return "triangle";
   return "brush";
-}
-
-/** Returns the currently active 3D generator tool. Defaults to 'planet'. */
-export function getActive3DTool(ui) {
-  if (ui.isStarActive)      return "star";
-  if (ui.isSunActive)       return "sun";
-  if (ui.isMoonActive)      return "moon";
-  if (ui.isNebulaActive)    return "nebula";
-  if (ui.isCometActive)     return "comet";
-  if (ui.isBlackholeActive) return "blackhole";
-  if (ui.isRingsActive)     return "rings";
-  return "planet";
 }

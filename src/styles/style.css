@@ -15,6 +15,7 @@ html, body {
   align-items: center !important;
   overflow: hidden !important;
   background: #0d0617 !important;
+  font-family: 'Merriweather', serif;
 }
 
 @media (max-width: 1000px) {
@@ -56,6 +57,13 @@ html, body {
 .dock-bottom { grid-area: bottom; justify-content: center; justify-self: stretch; align-self: start; }
 .dock-left   { grid-area: left;   flex-direction: column; justify-content: center; justify-self: end;   align-self: stretch; }
 .dock-right  { grid-area: right;  flex-direction: column; justify-content: center; justify-self: start; align-self: stretch; }
+
+/* Reserve space so swapping between the 2D tool-set and the 3D slider set
+   doesn't reflow the rest of the layout. The 3D slider set is the wider of
+   the two — pin to its natural width so the workspace doesn't jiggle. */
+.dock-left {
+  min-width: 220px;
+}
 
 .workspace {
   grid-area: center;
@@ -101,6 +109,9 @@ html, body {
   .dock-right {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+  .dock-left {
+    min-width: 0;
   }
   .dock {
     flex-wrap: wrap;
@@ -165,7 +176,7 @@ button {
   cursor: pointer;
   font-weight: 600;
   font-size: 0.85rem;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 button:hover {
   background: rgba(180, 150, 255, 0.35);
@@ -188,6 +199,18 @@ button.active {
   width: 100%;
 }
 
+/* Primary "Generate Scene" action — distinct so users find it fast. */
+.primary-btn {
+  background: linear-gradient(135deg, rgba(180, 150, 255, 0.55), rgba(255, 150, 230, 0.45));
+  border-color: #e4c9ff;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.primary-btn:hover {
+  background: linear-gradient(135deg, rgba(180, 150, 255, 0.75), rgba(255, 150, 230, 0.6));
+}
+
 /* ── Mode + tool set ──────────────────────────────────────────────── */
 .mode-btn {
   padding: 6px 12px;
@@ -197,17 +220,53 @@ button.active {
 .tool-set {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
   width: 100%;
 }
 .tool-set[hidden] { display: none; }
+
+/* Slider row inside the 3D tool-set — label + range + readout, one line. */
+.slider-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 8px;
+}
+.slider-row > label {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+.slider-row > input[type="range"] {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+}
+.slider-row > .slider-value {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 2ch;
+  color: #e4c9ff;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-align: right;
+}
 
 @media (max-width: 1000px) {
   .tool-set {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
+  }
+  /* On mobile, sliders still render row-by-row so they stay legible. */
+  .slider-row {
+    flex: 1 1 140px;
   }
 }
 
@@ -223,4 +282,56 @@ button.active {
   width: 24px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 2px;
+  align-self: center;
+}
+
+/* ── Canvas container ─────────────────────────────────────────────── */
+#cursor-ring {
+  position: fixed;
+  pointer-events: none; /* Let clicks pass through to the canvas. */
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  display: none; /* Hidden until the mouse enters the canvas. */
+}
+
+#p5-container {
+  aspect-ratio: 1 / 1;
+  height: 100svh;
+  max-height: calc(100svh - 220px);
+  max-width: calc(100vw - 360px);
+  width: auto;
+  box-sizing: border-box;
+  position: relative;
+  border-radius: 20px;
+  box-shadow:
+    0 0 40px rgba(180, 150, 255, 0.15),
+    0 0 100px rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(180, 150, 255, 0.2);
+  overflow: hidden;
+  background: #0d0617; /* Prevents a flash of white before the canvas loads */
+  margin: 0;
+  touch-action: none; /* Required for reliable pointer/touch tracking */
+}
+
+@media (max-width: 1000px) {
+  #p5-container {
+    width: calc(100vw - 40px);
+    height: calc(100vw - 40px);
+    max-width: none;
+    max-height: none;
+  }
+}
+
+#p5-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+/* The 3D WEBGL canvas is absolutely positioned and stacked on top of the
+   2D one. Only one is visible at a time — the mode toggle swaps them. */
+#p5-container canvas.three-d-canvas {
+  position: absolute !important;
+  inset: 0;
+  z-index: 2;
 }

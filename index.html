@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>MagicalCanvas</title>
+    <link rel="stylesheet" href="/src/styles/style.css" />
+  </head>
+  <body>
+    <div class="app-layout">
+      <!-- TOP DOCK -->
+      <div class="dock dock-top">
+        <div class="control-group">
+          <label>Mode</label>
+          <button id="mode-2d" class="mode-btn active">2D</button>
+          <button id="mode-3d" class="mode-btn">3D</button>
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
+          <label for="color-picker">Color</label>
+          <input type="color" id="color-picker" value="#b496ff" />
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
+          <label for="size-picker">Size</label>
+          <input type="range" id="size-picker" min="5" max="100" value="25" />
+        </div>
+        <div class="divider"></div>
+        <div class="control-group">
+          <label for="opacity-picker">Opacity</label>
+          <input type="range" id="opacity-picker" min="5" max="100" value="100" />
+        </div>
+      </div>
+
+      <!-- LEFT DOCK — holds both tool-sets (2D tools & 3D sliders) -->
+      <div class="dock dock-left">
+        <!-- 2D TOOLS -->
+        <div class="tool-set" data-mode="2d">
+          <label>Tools</label>
+          <button id="brush-toggle" class="tool-btn active">Brush</button>
+          <button id="eraser-toggle" class="tool-btn">Eraser</button>
+          <div class="divider-h"></div>
+          <label>Shapes</label>
+          <button id="square-toggle" class="tool-btn">Square</button>
+          <button id="ellipse-toggle" class="tool-btn">Ellipse</button>
+          <button id="triangle-toggle" class="tool-btn">Triangle</button>
+        </div>
+
+        <!-- 3D GENERATIVE CONTROLS —
+             The 3D mode is generative: the sliders set the *count* of each
+             object type. Pressing "Generate" builds a full scene from those
+             counts (with random positions, sizes and orientations). Undo/redo
+             cycles through previously-generated scenes. -->
+        <div class="tool-set" data-mode="3d" hidden>
+          <label>Cosmos</label>
+          <div class="slider-row">
+            <label for="count-planets">Planets</label>
+            <input type="range" id="count-planets" min="0" max="10" value="3" />
+            <span class="slider-value" data-for="count-planets">3</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-moons">Moons</label>
+            <input type="range" id="count-moons" min="0" max="12" value="2" />
+            <span class="slider-value" data-for="count-moons">2</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-stars">Stars</label>
+            <input type="range" id="count-stars" min="0" max="30" value="8" />
+            <span class="slider-value" data-for="count-stars">8</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-suns">Suns</label>
+            <input type="range" id="count-suns" min="0" max="5" value="1" />
+            <span class="slider-value" data-for="count-suns">1</span>
+          </div>
+
+          <div class="divider-h"></div>
+          <label>Phenomena</label>
+
+          <div class="slider-row">
+            <label for="count-nebulas">Nebulas</label>
+            <input type="range" id="count-nebulas" min="0" max="6" value="1" />
+            <span class="slider-value" data-for="count-nebulas">1</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-comets">Comets</label>
+            <input type="range" id="count-comets" min="0" max="8" value="2" />
+            <span class="slider-value" data-for="count-comets">2</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-blackholes">Black Holes</label>
+            <input type="range" id="count-blackholes" min="0" max="3" value="0" />
+            <span class="slider-value" data-for="count-blackholes">0</span>
+          </div>
+          <div class="slider-row">
+            <label for="count-rings">Rings</label>
+            <input type="range" id="count-rings" min="0" max="6" value="1" />
+            <span class="slider-value" data-for="count-rings">1</span>
+          </div>
+
+          <div class="divider-h"></div>
+          <button id="generate-btn" class="primary-btn">Generate Scene</button>
+        </div>
+      </div>
+
+      <!-- CENTER WORKSPACE -->
+      <div class="workspace">
+        <div id="p5-container">
+          <div id="cursor-ring">
+            <svg
+              width="100%"
+              height="100%"
+              viewBox="0 0 100 100"
+              style="overflow:visible;"
+            >
+              <circle
+                id="cursor-circle"
+                cx="50"
+                cy="50"
+                r="50"
+                fill="none"
+                stroke="rgba(180, 150, 255, 0.8)"
+                stroke-width="1.5"
+                vector-effect="non-scaling-stroke"
+                style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));"
+              />
+              <rect
+                id="cursor-square"
+                x="0"
+                y="0"
+                width="100"
+                height="100"
+                fill="none"
+                stroke="rgba(180, 150, 255, 0.8)"
+                stroke-width="1.5"
+                vector-effect="non-scaling-stroke"
+                style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));"
+              />
+              <polygon
+                id="cursor-triangle"
+                points="50,0 6.7,75 93.3,75"
+                fill="none"
+                stroke="rgba(180, 150, 255, 0.8)"
+                stroke-width="1.5"
+                vector-effect="non-scaling-stroke"
+                style="display:none; filter: drop-shadow(0px 0px 2px rgba(180,150,255,0.6));"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT DOCK -->
+      <div class="dock dock-right">
+        <label>Effects</label>
+        <button id="rainbow-toggle" class="toggle-btn">Rainbow</button>
+        <button id="anim-toggle" class="toggle-btn active">Animate</button>
+        <button id="fade-toggle" class="toggle-btn">Fade</button>
+        <div class="divider-h"></div>
+        <div class="control-group vert">
+          <label for="fade-speed">Speed</label>
+          <input type="range" id="fade-speed" min="1" max="60" value="5" />
+        </div>
+      </div>
+
+      <!-- BOTTOM DOCK -->
+      <div class="dock dock-bottom">
+        <button id="undo-btn">Undo</button>
+        <button id="redo-btn">Redo</button>
+        <div class="divider-h"></div>
+        <button id="clear-btn">Clear Canvas</button>
+        <button id="import-btn">Import PNG</button>
+        <button id="export-btn">Export PNG</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

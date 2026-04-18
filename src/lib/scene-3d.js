@@ -2,41 +2,66 @@ import p5 from "p5";
 import {
   createPlanet, createStar, createSun, createMoon,
   createNebula, createComet, createBlackHole, createRings,
-  createStarField,
+  createStarField, SCENE_BOUND,
 } from "./generative-3d.js";
 import { CANVAS_SIZE } from "./constants.js";
 
 /**
- * Spins up a second p5 instance running in WEBGL mode alongside the 2D sketch.
- * The returned controller lets the host component toggle visibility, spawn
- * generative objects at a clicked point, and clear the scene.
+ * Generative 3D scene.
+ *
+ * The 3D mode in this app is composition-first, not paint-first: the user
+ * dials in counts per object type (planets, stars, nebulas, etc.) and presses
+ * "Generate" to materialize a scene. Each generate() snapshots a *placement
+ * list* — an array of concrete object records with positions baked in — so
+ * undo/redo replays the exact prior layout rather than re-rolling random
+ * positions.
  *
  * Architecture:
- *   - Objects live in `sceneObjects` as { draw(p), update(p, dt) } records.
- *   - `draw()` is called every frame inside the WEBGL p5's draw loop; objects
- *     are responsible for their own push/pop so they don't leak transforms.
- *   - Ambient star field is persistent so the cosmos never looks empty.
+ *   - `sceneObjects` are live draw/update records (what we render this frame).
+ *   - `history` + `future` are stacks of *placement lists* (what we could
+ *     render). Generating pushes the current list onto history; undo pops.
+ *   - `starfield` is persistent ambient scenery, not part of the placement
+ *     list, so it survives undo/clear.
+ *
+ * Firefox compatibility:
+ *   - `setAttributes()` is called BEFORE `createCanvas()`. Called after, p5
+ *     warns and tries to recreate the GL context, which Firefox occasionally
+ *     fails on — and every subsequent frame then renders as a black canvas.
  */
+
+// Public factory so the host component (main.ts) can drive the scene.
 export function createScene3D(containerId, getUI) {
   const sceneObjects = [];
-  let starfield = null;           // persistent background
+  let starfield = null;
   let lastFrameTime = 0;
-  let orbitEnabled = true;        // disabled while a tool is being placed
+
+  // Undo/redo stacks of placement lists. `current` is the list that produced
+  // the active `sceneObjects`. A placement list is a plain array — safe to
+  // structuredClone for safety if we ever need to mutate in place.
+  let current = [];
+  const history = [];
+  const future  = [];
+  const HISTORY_MAX = 25;
 
   let pInstance = null;
   let canvasEl  = null;
   let visible   = false;
 
-  // Queue objects added before p5 finishes setup (rare, but cheap to guard)
   const pending = [];
 
   const sketch = (p) => {
     p.setup = () => {
+      // NOTE: We intentionally do NOT call `setAttributes("antialias", true)`
+      // here. p5 2.x defaults to an antialiased WEBGL context already, and
+      // calling `setAttributes()` at any point forces a GL context re-
+      // creation — which Firefox sometimes leaves in a broken "black canvas"
+      // state. Omitting the call gets anti-aliasing for free and keeps the
+      // context stable across browsers.
       p.pixelDensity(1);
       const c = p.createCanvas(CANVAS_SIZE, CANVAS_SIZE, p.WEBGL);
       c.parent(containerId);
       canvasEl = c.elt;
-      canvasEl.classList.add("three-d-canvas"); // used by host to stack it
+      canvasEl.classList.add("three-d-canvas");
       canvasEl.style.width  = "100%";
       canvasEl.style.height = "100%";
       canvasEl.style.position = "absolute";
@@ -46,11 +71,10 @@ export function createScene3D(containerId, getUI) {
       // wins over inline styles — use setProperty with the important flag.
       canvasEl.style.setProperty("display", visible ? "block" : "none", "important");
 
-      p.setAttributes("antialias", true);
       p.perspective(p.PI / 3, 1, 1, 5000);
 
-      // Persistent starry backdrop
-      starfield = createStarField(p, 400);
+      // Persistent starry backdrop (survives undo/clear)
+      starfield = createStarField(p, 220);
 
       // Flush anything queued before setup ran
       for (const fn of pending) fn(p);
@@ -62,10 +86,8 @@ export function createScene3D(containerId, getUI) {
 
       p.clear();
 
-      // Camera: orbitControl gives drag-to-rotate + wheel-to-zoom for free.
-      // Disabled momentarily when the user is placing an object so the
-      // placement click doesn't also rotate the camera.
-      if (orbitEnabled) p.orbitControl(2, 2, 0.05);
+      // Drag-to-rotate, wheel-to-zoom, two-finger-pan come for free.
+      p.orbitControl(2, 2, 0.05);
 
       // Lighting — warm key + cool fill mirrors the neon theme
       p.ambientLight(90, 70, 150);
@@ -76,25 +98,21 @@ export function createScene3D(containerId, getUI) {
       const dt  = lastFrameTime ? Math.min(0.05, (now - lastFrameTime) / 1000) : 0;
       lastFrameTime = now;
 
-      // Background stars
       if (starfield) starfield.draw(p);
 
-      // Spawn / iterate / cull
-      for (let i = sceneObjects.length - 1; i >= 0; i--) {
-        const obj = sceneObjects[i];
+      // Objects: update, draw. The factories render into their own push/pop
+      // so we don't leak transforms.
+      for (const obj of sceneObjects) {
         obj.update?.(p, dt);
         obj.draw(p);
-        if (obj.isDone?.()) sceneObjects.splice(i, 1);
       }
     };
 
-    // Suppress scroll-while-drawing on touch
     p.touchStarted = (e) => { if (e && e.target === canvasEl) e.preventDefault?.(); };
     p.touchMoved   = (e) => { if (e && e.target === canvasEl) e.preventDefault?.(); };
   };
 
-  // ── Public API ──────────────────────────────────────────────────────────
-  // Defer p5 construction so that an SSR pass never touches `window`.
+  // Defer p5 construction so an SSR pass never touches `window`.
   if (typeof window !== "undefined") {
     pInstance = new p5(sketch);
   }
@@ -104,70 +122,133 @@ export function createScene3D(containerId, getUI) {
     else pending.push(fn);
   };
 
-  /**
-   * Maps a DOM-space click (clientX/clientY) to a WEBGL placement point.
-   * p5 WEBGL coords place (0,0) at the canvas center — we simply map the
-   * click's fraction across the canvas and scale by the sketch's internal size.
-   */
-  const screenToWorld = (clientX, clientY) => {
-    if (!canvasEl) return { x: 0, y: 0, z: 0 };
-    const rect = canvasEl.getBoundingClientRect();
-    const fx = (clientX - rect.left) / rect.width;  // 0..1
-    const fy = (clientY - rect.top)  / rect.height;
-    // Half the sketch width/height in WEBGL units is the visible half-extent
-    const halfW = (pInstance?.width  ?? CANVAS_SIZE) / 2;
-    const halfH = (pInstance?.height ?? CANVAS_SIZE) / 2;
-    // Pull the scale in so objects land inside the focal area, not at the
-    // extreme edges where the perspective skew is dramatic.
-    const worldScale = 0.6;
-    return {
-      x: (fx * 2 - 1) * halfW * worldScale,
-      y: (fy * 2 - 1) * halfH * worldScale,
-      z: 0,
-    };
+  // ── Placement list → live draw records ─────────────────────────────────
+  // Each placement is a plain data record. Rebuilding the scene from a
+  // placement list always yields a visually equivalent layout.
+
+  const FACTORY = {
+    planet:    createPlanet,
+    star:      createStar,
+    sun:       createSun,
+    moon:      createMoon,
+    nebula:    createNebula,
+    comet:     createComet,
+    blackhole: createBlackHole,
+    rings:     createRings,
   };
 
-  const spawn = (tool, clientX, clientY) => {
-    run((p) => {
-      const ui = getUI();
-      const pos = screenToWorld(clientX, clientY);
-      const opts = {
-        x: pos.x, y: pos.y, z: pos.z,
-        sizeNorm: (ui.size - 5) / 95,      // 0..1
+  function materialize(placements) {
+    // Nothing we can do until p5 is ready; replay once setup flushes.
+    if (!pInstance) {
+      pending.push(() => materialize(placements));
+      return;
+    }
+    // Dispose any texture-owning factory outputs from the previous scene.
+    for (const obj of sceneObjects) obj.dispose?.();
+    sceneObjects.length = 0;
+    for (const pl of placements) {
+      const f = FACTORY[pl.type];
+      if (!f) continue;
+      sceneObjects.push(f(pInstance, pl));
+    }
+  }
+
+  // ── Scene generation ───────────────────────────────────────────────────
+  // Build a placement list from UI counts. The randomness here (position,
+  // per-object size jitter) is baked into the placement list so undo replays
+  // the same layout.
+
+  function buildPlacements(counts, ui) {
+    const out = [];
+    const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+    // Keep the fringe of the scene breathing room so nothing touches the edge.
+    const edge = SCENE_BOUND * 0.85;
+    const baseSize = (ui.size - 5) / 95; // 0..1 from the Size slider
+
+    const push = (type, { sizeJitter = 0.35, zRange = 120 } = {}) => {
+      out.push({
+        type,
+        x: rand(-edge, edge),
+        y: rand(-edge, edge),
+        z: rand(-zRange, zRange),
+        sizeNorm: Math.max(0, Math.min(1, baseSize + rand(-sizeJitter, sizeJitter))),
         colorHex: ui.color,
         rainbow: ui.isRainbowActive,
         animate: ui.isAnimActive,
-      };
-      let obj = null;
-      switch (tool) {
-        case "planet":     obj = createPlanet(p, opts); break;
-        case "star":       obj = createStar(p, opts); break;
-        case "sun":        obj = createSun(p, opts); break;
-        case "moon":       obj = createMoon(p, opts); break;
-        case "nebula":     obj = createNebula(p, opts); break;
-        case "comet":      obj = createComet(p, opts); break;
-        case "blackhole":  obj = createBlackHole(p, opts); break;
-        case "rings":      obj = createRings(p, opts); break;
-      }
-      if (obj) sceneObjects.push(obj);
-    });
-  };
+      });
+    };
 
+    // Order matters only for paint — keep large cloudy things first so the
+    // solid bodies read on top. (We also depth-test, but it reads cleaner.)
+    for (let i = 0; i < (counts.nebulas    ?? 0); i++) push("nebula",    { zRange: 60 });
+    for (let i = 0; i < (counts.blackholes ?? 0); i++) push("blackhole", { sizeJitter: 0.2 });
+    for (let i = 0; i < (counts.rings      ?? 0); i++) push("rings",     { sizeJitter: 0.25 });
+    for (let i = 0; i < (counts.suns       ?? 0); i++) push("sun",       { sizeJitter: 0.25 });
+    for (let i = 0; i < (counts.planets    ?? 0); i++) push("planet");
+    for (let i = 0; i < (counts.moons      ?? 0); i++) push("moon",      { sizeJitter: 0.2 });
+    for (let i = 0; i < (counts.stars      ?? 0); i++) push("star",      { sizeJitter: 0.3 });
+    for (let i = 0; i < (counts.comets     ?? 0); i++) push("comet",     { sizeJitter: 0.3 });
+
+    return out;
+  }
+
+  function pushHistory(list) {
+    if (current.length) history.push(current);
+    if (history.length > HISTORY_MAX) history.shift();
+    future.length = 0; // new generation invalidates the redo stack
+    current = list;
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────────
   return {
     show() {
       visible = true;
-      run((_p) => { canvasEl?.style.setProperty("display", "block", "important"); });
+      run(() => { canvasEl?.style.setProperty("display", "block", "important"); });
     },
     hide() {
       visible = false;
-      run((_p) => { canvasEl?.style.setProperty("display", "none", "important"); });
+      run(() => { canvasEl?.style.setProperty("display", "none", "important"); });
     },
     isVisible: () => visible,
-    spawn,
-    clear() {
-      sceneObjects.length = 0;
+
+    /**
+     * Generate a new scene from the current slider counts. Snapshots the
+     * prior scene into undo history.
+     */
+    generate(counts) {
+      const ui = getUI();
+      const list = buildPlacements(counts, ui);
+      pushHistory(list);
+      materialize(list);
     },
-    setOrbitEnabled(on) { orbitEnabled = on; },
+
+    /** Clear the scene. Clears history too — a fresh canvas is a fresh state. */
+    clear() {
+      for (const obj of sceneObjects) obj.dispose?.();
+      sceneObjects.length = 0;
+      current = [];
+      history.length = 0;
+      future.length = 0;
+    },
+
+    /** Undo the most recent generation. Returns true if anything changed. */
+    undo() {
+      if (history.length === 0) return false;
+      future.push(current);
+      current = history.pop();
+      materialize(current);
+      return true;
+    },
+
+    /** Redo a previously-undone generation. */
+    redo() {
+      if (future.length === 0) return false;
+      history.push(current);
+      current = future.pop();
+      materialize(current);
+      return true;
+    },
+
     exportPNG(filename = "MagicalArtwork3D.png") {
       if (!canvasEl) return;
       const link = document.createElement("a");
